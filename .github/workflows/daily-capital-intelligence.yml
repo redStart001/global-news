@@ -1,8 +1,9 @@
+
 name: Daily Global Capital Intelligence
 
 on:
   schedule:
-    # 07:11 Asia/Shanghai = 23:11 UTC on the previous day
+    # 07:11 Asia/Shanghai = 23:11 UTC previous day
     - cron: '11 23 * * *'
   workflow_dispatch:
 
@@ -17,28 +18,33 @@ jobs:
   generate-and-send:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r global-capital-intelligence/requirements.txt
+          pip install -r requirements.txt
+
       - name: Generate and send report
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
-          PYTHONPATH: global-capital-intelligence/src
-        run: python global-capital-intelligence/src/run.py
+          PYTHONPATH: src
+        run: python src/run.py
+
       - name: Upload report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: global-capital-intelligence-${{ github.run_id }}
-          path: global-capital-intelligence/data/reports/
+          path: data/reports/
           if-no-files-found: ignore
           retention-days: 30
