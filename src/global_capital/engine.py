@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import html
+import json
+import logging
+import os
+import re
+import smtplib
+import ssl
+from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
+
+import httpx
+
+try:
+    from ddgs import DDGS
+except ImportError:  # allows the deterministic rule-only renderer to be tested
+    DDGS = None
+
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = ROOT / "data" / "config.json"
+LOGGER = logging.getLogger("global_capital")
+
+
+def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
+    config = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("timezone", "recipient", "smtp", "search", "ai", "sections", "editorial_rules"):
+        if key not in config:
+            raise ValueError(f"Missing config key: {key}")
+    if not config["sections"]:
+        raise ValueError("At least one intelligence section is required")
+    return config
+
+
+def _search_sync(query: str, limit: int, region: str, timelimit: str) -> list[dict[str, str]]:
+    if DDGS is None:
+        raise RuntimeError("DDGS dependency is missing. Install ddgs to enable web collection.")
+    output = []
+    with DDGS() as client:
+        for item in client.text(query, max_results=limit, region=region, timelimit=timelimit):
+            url = str(item.get("href") or item.get("url") or "").strip()
+            title = str(item.get("title") or "").strip()
+            snippet = str(item.get("body") or item.get("snippet") or "").strip()
+            if title and url.startswith(("https://", "http://")):
+                output.append({"title": title, "url": url, "snippet": snippet, "query": query})
+    return output
+
+
+async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
+    search = config["search"]
+    max_queries = int(search.get("max_queries", 18))
+    limit = int(search.get("max_results_per_query", 5))
+    all_rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for section in config["sections"]:
+        for query in section["queries"]:
+            try:
+                rows = await asyncio.to_thread(
+                    _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "d")
+                )
+                for row in rows:
+                    normalized = row["url"].split("#", 1)[0].rstrip("/")
+                    if normalized not in seen:
+                        seen.add(normalized)
+                        row["section_id"] = section["id"]
+                        row["section_title"] = section["title"]
+                        all_rows.append(row)
+            except Exception as exc:
+                LOGGER.warning("Search failed (%s): %s", query, exc)
+            await asyncio.sleep(float(search.get("delay_seconds", 1.0)))
+            max_queries -= 1
+            if max_queries <= 0:
+                return all_rows
+    return all_rows
+
+
+def _status_hint(text: str) -> str:
+    lowered = text.lower()
+    if any(x in lowered for x in ("completed", "closed", "has acquired", "acquired", "opened", "began operations", "已完成")):
+        return "Completed / 已完成（需核对正文）"
+    if any(x in lowered for x in ("plans to", "will invest", "announced", "agreement", "to acquire", "计划", "宣布")):
+        return "Announced or planned / 已宣布或计划（尚不等于完成）"
+    if any(x in lowered for x in ("considering", "in talks", "negotiation", "reportedly", "may invest", "谈判", "考虑")):
+        return "Reported or under discussion / 媒体报道或洽谈中"
+    return "Unverified status / 状态待核实"
+
+
+def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now: datetime) -> str:
+    """Free deterministic fallback: no model call, no fabricated enrichment."""
+    date_label = now.strftime("%Y-%m-%d %H:%M %Z")
+    by_section = {section["id"]: [] for section in config["sections"]}
+    for record in records:
+        by_section.setdefault(record.get("section_id", "other"), []).append(record)
+    lines = [
+        "# Horizon Global Capital Intelligence / 全球经济与资本流向情报",
+        f"> Generated: {date_label}",
+        "> Mode: Free rule engine / 免费规则引擎（未使用 AI）",
+        f"> Public indexed search leads: {len(records)}. Search coverage is not exhaustive.",
+        "",
+        "## Executive overview / 核心摘要",
+        "- This edition is a rule-filtered collection of public search results. Items below are leads for verification, not independently verified transaction records. / 本期为公开搜索结果的规则筛选汇总，以下内容属于待核查线索，并非独立核实的交易记录。",
+        "- Routine stock prices, individual share movements and ordinary bond-price commentary are intentionally excluded from the core focus. / 本系统不以普通股价、个股涨跌和日常债券价格为重点。",
+        "",
+    ]
+    for section in config["sections"]:
+        lines.extend([f"## {section['title']}", f"> Scope / 监测范围：{section['focus']}", ""])
+        rows = by_section.get(section["id"], [])
+        if not rows:
+            lines.append("- No matching public search leads were returned. This does not establish that no activity occurred. / 本次没有获得匹配的公开搜索线索，但不能据此认定没有相关活动。")
+        for index, row in enumerate(rows, 1):
+            combined = f"{row['title']} {row['snippet']}"
+            status = _status_hint(combined)
+            lines.extend([
+                f"### {index}. {row['title']}",
+                f"- Status / 状态：{status}",
+                f"- Search snippet / 搜索摘要：{row['snippet'] or 'No snippet / 无摘要'}",
+                f"- Source / 来源：[{urlparse(row['url']).netloc}]({row['url']})",
+                "- Investor, destination, sector, value and policy response / 投资方、目的地、行业、金额及政策响应：Not verified from snippet / 搜索摘要不足以核实，请打开原文确认。",
+                "",
+            ])
+    lines.extend([
+        "## Investment destination policy watch / 投资目的地政策观察",
+        "- Check recipient-country tax credits, grants, subsidies, local-content rules, foreign-investment screening, ownership limits and permitting changes against official government sources. / 对投资目的地的税收抵免、补贴、地方含量要求、外资审查、持股限制和许可政策，应以政府官方来源核实。",
+        "- A policy announcement is not automatically evidence that a named investor received the incentive. / 政策公布不代表某个投资者已经获得相关优惠。",
+        "",
+        "## Important vocabulary / 重点词汇",
+        "| English | American IPA | 中文 |\n|---|---|---|",
+        "| Capital allocation | /ˈkæpɪtəl ˌæləˈkeɪʃən/ | 资本配置 |",
+        "| Sovereign wealth fund | /ˈsɑːvrɪn welθ fʌnd/ | 主权财富基金 |",
+        "| Foreign direct investment | /ˈfɔːrən dəˈrekt ɪnˈvestmənt/ | 外国直接投资 |",
+        "| Investment screening | /ɪnˈvestmənt ˈskriːnɪŋ/ | 投资审查 |",
+        "| Tax incentive | /tæks ɪnˈsentɪv/ | 税收优惠 |",
+        "| Industrial policy | /ɪnˈdʌstriəl ˈpɑːləsi/ | 产业政策 |",
+        "| Cross-border acquisition | /ˌkrɔːs ˈbɔːrdər ˌækwɪˈzɪʃən/ | 跨境收购 |",
+        "| Divestment | /daɪˈvestmənt/ | 撤资、剥离资产 |",
+        "",
+        "## Methodology and limitations / 方法与限制",
+        "- Rule engine does not infer undisclosed deal values, company identities or policy eligibility. / 规则引擎不会推测未公开的交易金额、企业身份或政策适用资格。",
+        "- Search snippets can be incomplete, stale or misleading; verify the original article and primary documents. / 搜索摘要可能不完整、过时或存在误导，请核对原文及一手文件。",
+        "- This is business intelligence, not investment advice. / 本报告属于商业情报，不构成投资建议。",
+    ])
+    return "\n".join(lines)
+
+
+def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
+    return f"""You are the bilingual editor of a rigorous global macroeconomics and institutional-capital intelligence briefing.
+Date: {date}
+Use only the evidence records supplied below. Produce Markdown in English-Chinese pairs.
+Required sections: Executive Summary; China International Economic Cooperation; US External Economic Policy; Wall Street and Global Institutional Capital; Major Global Investments and M&A; Federal Reserve and Monetary Policy; Investment Destination Policy Responses; Capital Flow Map; Important Vocabulary (English, American IPA, Chinese); Sources and Limitations.
+For each item label status: Completed, Formally announced/planned, Reported/under negotiation, or Unverified. Distinguish source facts from your analysis. For each investment, report investor, destination, sector, disclosed amount, status and date only if evidence supports it. For recipient-country responses, identify government, tax incentives/subsidies/grants, industrial policy, foreign-investment screening, local-content rules and effective dates only if evidenced. Explain links between an investment and a policy only when sources support the link. Exclude routine stock-price and ordinary bond-price commentary. Do not invent facts, amounts, entities, dates, causal claims or contacts. Preserve source URLs and cite every claim. If evidence is insufficient, say Not publicly disclosed / 未公开 or Not verified / 尚未核实. No personalized investment advice.
+Editorial rules: {json.dumps(config['editorial_rules'], ensure_ascii=False)}
+Evidence: {json.dumps(records, ensure_ascii=False)}"""
+
+
+async def gemini_enrich(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
+    ai = config["ai"]
+    key = os.getenv(ai.get("api_key_env", "GEMINI_API_KEY"), "").strip()
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    model = ai.get("model", "gemini-2.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {
+        "systemInstruction": {"parts": [{"text": "Follow evidence and attribution rules exactly. Never fabricate."}]},
+        "contents": [{"role": "user", "parts": [{"text": _gemini_prompt(config, records, date)}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": int(ai.get("max_output_tokens", 7000))},
+    }
+    async with httpx.AsyncClient(timeout=float(ai.get("timeout_seconds", 90))) as client:
+        response = await client.post(url, params={"key": key}, json=payload)
+        response.raise_for_status()
+        data = response.json()
+    try:
+        return "\n".join(part["text"] for part in data["candidates"][0]["content"]["parts"] if "text" in part).strip()
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError("Gemini returned an unexpected response format") from exc
+
+
+def send_email(config: dict[str, Any], subject: str, body: str) -> None:
+    smtp = config["smtp"]
+    password = os.getenv(smtp.get("password_env", "BREVO_SMTP_KEY"), "").strip()
+    if not password:
+        raise RuntimeError("BREVO_SMTP_KEY is not configured")
+    message = MIMEMultipart("alternative")
+    message["Subject"] = subject
+    message["From"] = f"{smtp.get('sender_name', 'Horizon Intelligence')} <{smtp['sender']}>"
+    message["To"] = config["recipient"]
+    message.attach(MIMEText(body, "plain", "utf-8"))
+    html_body = "<html><body><pre style='white-space:pre-wrap;font-family:Arial,sans-serif;line-height:1.55'>" + html.escape(body) + "</pre></body></html>"
+    message.attach(MIMEText(html_body, "html", "utf-8"))
+    with smtplib.SMTP_SSL(smtp["host"], int(smtp["port"]), context=ssl.create_default_context(), timeout=30) as server:
+        server.login(smtp["username"], password)
+        server.send_message(message)
+
+
+async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules: bool = False) -> Path:
+    config = load_config(config_path)
+    now = datetime.now(ZoneInfo(config["timezone"]))
+    day = now.strftime("%Y-%m-%d")
+    records = await collect(config)
+    mode = "rules"
+    report = None
+    if not force_rules and config["ai"].get("enabled", True):
+        try:
+            report = await gemini_enrich(config, records, day)
+            mode = "gemini"
+        except Exception as exc:
+            LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
+    if not report:
+        report = build_rule_report(config, records, now)
+    report = f"> Generation mode: {mode}\n> Public search leads: {len(records)}\n\n" + report
+    out_dir = ROOT / config.get("output", {}).get("directory", "data/reports") / day
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path = out_dir / "global-capital-intelligence.md"
+    report_path.write_text(report, encoding="utf-8")
+    if config.get("output", {}).get("save_raw_results", True):
+        (out_dir / "search-results.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    if send:
+        send_email(config, f"全球经济与资本流向情报 | Global Capital Intelligence | {day}", report)
+    LOGGER.info("Report saved: %s (mode=%s, records=%s)", report_path, mode, len(records))
+    return report_path
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Horizon Global Capital Intelligence")
+    parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+    parser.add_argument("--no-email", action="store_true", help="Generate report without sending email")
+    parser.add_argument("--rules-only", action="store_true", help="Skip Gemini and use deterministic rules")
+    parser.add_argument("--log-level", default=os.getenv("LOG_LEVEL", "INFO"))
+    args = parser.parse_args()
+    logging.basicConfig(level=args.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    path = asyncio.run(run(args.config, send=not args.no_email, force_rules=args.rules_only))
+    print(f"Report generated: {path}")
+
+
+if __name__ == "__main__":
+    main()

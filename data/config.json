@@ -1,0 +1,112 @@
+{
+  "project_name": "Horizon Global Capital Intelligence",
+  "timezone": "Asia/Shanghai",
+  "recipient": "RF315@foxmail.com",
+  "smtp": {
+    "host": "smtp-relay.brevo.com",
+    "port": 465,
+    "username": "c25cc1001@smtp-brevo.com",
+    "sender": "sales@mail.mykeychain.top",
+    "sender_name": "Horizon Global Capital Intelligence",
+    "password_env": "BREVO_SMTP_KEY"
+  },
+  "search": {
+    "max_results_per_query": 5,
+    "max_queries": 24,
+    "delay_seconds": 1.2,
+    "region": "wt-wt",
+    "timelimit": "d"
+  },
+  "ai": {
+    "enabled": true,
+    "provider": "gemini",
+    "api_key_env": "GEMINI_API_KEY",
+    "model": "gemini-2.5-flash",
+    "timeout_seconds": 90,
+    "max_output_tokens": 7000
+  },
+  "output": { "directory": "data/reports", "save_raw_results": true },
+  "sections": [
+    {
+      "id": "china_cooperation",
+      "title": "China's International Economic Cooperation / 中国对外经济合作",
+      "focus": "Cross-border trade, investment, industrial cooperation, strategic agreements, infrastructure and supply-chain cooperation involving China.",
+      "queries": [
+        "China overseas investment trade cooperation agreements industrial cooperation latest",
+        "China foreign direct investment bilateral economic cooperation new agreements",
+        "China cross border investment manufacturing supply chain cooperation latest"
+      ],
+      "keywords": ["China", "investment", "trade agreement", "industrial cooperation", "FDI", "supply chain"]
+    },
+    {
+      "id": "us_policy",
+      "title": "US External Economic Policy / 美国对外经济政策",
+      "focus": "US tariffs, sanctions, export controls, outbound and inbound investment restrictions, trade policy and US-China economic relations.",
+      "queries": [
+        "United States international economic policy tariffs sanctions investment restrictions latest",
+        "US China trade policy export controls investment restrictions latest",
+        "US outbound investment rules foreign investment screening policy latest"
+      ],
+      "keywords": ["United States", "tariff", "sanctions", "export controls", "investment screening", "US-China"]
+    },
+    {
+      "id": "institutional_capital",
+      "title": "Wall Street and Global Institutional Capital / 华尔街与全球机构资本",
+      "focus": "Material capital allocation decisions by major banks, investment banks, asset managers, sovereign wealth funds, public investment funds, conglomerates, family offices and large business families. Exclude routine stock-price commentary.",
+      "queries": [
+        "sovereign wealth fund major investment acquisition divestment announced today",
+        "BlackRock Vanguard State Street major capital allocation infrastructure private markets investment",
+        "Wall Street bank asset manager strategic investment acquisition divestment latest",
+        "family office conglomerate large institutional investment private equity capital allocation"
+      ],
+      "keywords": ["sovereign wealth fund", "asset manager", "capital allocation", "investment", "acquisition", "divestment", "family office", "conglomerate"]
+    },
+    {
+      "id": "major_investments",
+      "title": "Major Global Investments and M&A / 全球重大投资与并购",
+      "focus": "Large cross-border M&A, private equity, venture capital, greenfield industrial investment, factories, data centers, energy, logistics, manufacturing and strategic infrastructure.",
+      "queries": [
+        "major cross border investment acquisition private equity industrial project announced",
+        "large manufacturing factory investment foreign direct investment project announced",
+        "global private equity infrastructure energy logistics investment deal latest",
+        "cross border M&A strategic investment sovereign fund industrial investment"
+      ],
+      "keywords": ["cross-border", "M&A", "private equity", "greenfield", "factory", "infrastructure", "investment"]
+    },
+    {
+      "id": "fed_policy",
+      "title": "Federal Reserve and Monetary Policy / 美联储与货币政策",
+      "focus": "Federal Reserve decisions, rates, balance sheet and monetary policy only where there is a meaningful transmission to sovereign funds, institutional asset allocation, conglomerates, family offices, cross-border investment or government financing.",
+      "queries": [
+        "Federal Reserve monetary policy interest rates institutional capital allocation impact latest",
+        "Federal Reserve policy global capital flows emerging markets sovereign wealth funds",
+        "central bank rate decision cross border investment capital flows institutional investors"
+      ],
+      "keywords": ["Federal Reserve", "interest rate", "monetary policy", "capital flows", "institutional allocation"]
+    },
+    {
+      "id": "destination_policy",
+      "title": "Investment Destination Policy Responses / 投资目的地国家政策响应",
+      "focus": "How recipient countries respond to inbound capital and strategic investment: tax incentives, subsidies, grants, industrial policy, local-content rules, foreign investment screening, ownership restrictions, permits, export incentives and regulatory changes. Link the policy to the relevant investment where evidence exists.",
+      "queries": [
+        "government investment incentives tax credits subsidies foreign direct investment manufacturing policy latest",
+        "foreign investment screening national security review industrial policy incentives recipient countries",
+        "country announces tax incentives subsidy package foreign manufacturing investment project",
+        "local content rules foreign investment industrial policy investment incentives latest"
+      ],
+      "keywords": ["tax incentive", "subsidy", "grant", "foreign investment screening", "industrial policy", "local content", "investment incentive"]
+    }
+  ],
+  "editorial_rules": [
+    "Do not prioritize ordinary stock price movements, individual share prices or routine bond price movements.",
+    "Prioritize real capital allocation, major policy decisions and material institutional actions.",
+    "Label each item as completed, formally announced/planned, reported/under negotiation, or unverified.",
+    "For every material investment, identify destination country, sector, investor, value, status and source only when disclosed.",
+    "For recipient-country policy, identify the government, policy instrument, effective date and linked investment only when supported by evidence.",
+    "Never invent amounts, dates, investor identities, policy details or causal relationships.",
+    "Separate facts from analysis. Mark causal interpretation as analysis, not established fact.",
+    "Include original English and faithful Chinese translation for every important item.",
+    "Include important English vocabulary, American IPA and Chinese meaning.",
+    "Do not provide personalized investment advice."
+  ]
+}
