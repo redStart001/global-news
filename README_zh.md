@@ -77,3 +77,26 @@ PYTHONPATH=src python src/run.py --rules-only --no-email
 - 正文提取可能受付费墙、反爬策略及页面结构影响；失败时会记录状态，不会伪造正文。
 
 - 默认每次最多抓取 48 篇候选文章正文，按六大板块轮询分配；可在 `data/config.json` 的 `article_extraction.max_articles` 调整。
+
+
+## V5：多翻译服务自动切换
+
+新增 `src/global_capital/translation.py`，在新闻采集、正文提取和报告事实整理之后执行英译中。默认顺序：
+
+1. Gemini（复用现有 `GEMINI_API_KEY`；翻译模型可在 `data/config.json` 修改）
+2. Google Cloud Translation（可选 Secret：`GOOGLE_TRANSLATE_API_KEY`）
+3. Microsoft Translator（可选 Secrets：`MICROSOFT_TRANSLATOR_KEY`、`MICROSOFT_TRANSLATOR_REGION`）
+4. MyMemory（低额度匿名备用；可选 `MYMEMORY_EMAIL`）
+5. LibreTranslate（需配置可用服务地址 `LIBRETRANSLATE_URL`，建议自托管；可选 `LIBRETRANSLATE_API_KEY`）
+
+某服务未配置、超时、额度受限或返回错误时自动尝试下一家。所有服务失败时保留英文正文，不阻断邮件。翻译按段落切分，并缓存到 `data/translation-cache.sqlite3`，重复文本不重复请求。默认每日报告最多翻译 8 篇已成功提取正文的文章，可在 `data/config.json` 的 `translation` 项调整。
+
+### GitHub Secrets 配置
+
+现有 `GEMINI_API_KEY` 可继续使用。其他服务密钥均为可选项，需在对应平台申请后添加到 GitHub 仓库 Settings → Secrets and variables → Actions。不要把密钥写入 JSON、代码或提交到 GitHub。Google/Microsoft 免费额度、资格和是否需要绑定账单账户以服务商账户页面为准；MyMemory 匿名额度有限；公共 LibreTranslate 节点可能限流，不能视为稳定 SLA。
+
+### 说明
+
+- 翻译是新闻正文的附加层，不替代来源核验；数字、日期、金额、主体和交易状态应回看原文。
+- 报告附带重点商业词汇及美式 IPA。该词汇表是常用商业术语表，不保证每篇文章中的所有术语都已覆盖。
+- V5 未改变 SMTP、邮件收件人、每日 07:11（中国时间）工作流及原文链接机制。
