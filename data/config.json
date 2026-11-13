@@ -21,7 +21,7 @@
     "enabled": true,
     "provider": "gemini",
     "api_key_env": "GEMINI_API_KEY",
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.8-flash",
     "timeout_seconds": 90,
     "max_output_tokens": 7000
   },
