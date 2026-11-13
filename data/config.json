@@ -23,9 +23,19 @@
     "api_key_env": "GEMINI_API_KEY",
     "model": "gemini-3.8-flash",
     "timeout_seconds": 90,
-    "max_output_tokens": 7000
+    "max_output_tokens": 7000,
+    "max_attempts": 4,
+    "retry_delays_seconds": [
+      5,
+      10,
+      20
+    ],
+    "max_records_per_section": 4
   },
-  "output": { "directory": "data/reports", "save_raw_results": true },
+  "output": {
+    "directory": "data/reports",
+    "save_raw_results": true
+  },
   "sections": [
     {
       "id": "china_cooperation",
@@ -36,7 +46,15 @@
         "China foreign direct investment bilateral economic cooperation new agreements",
         "China cross border investment manufacturing supply chain cooperation latest"
       ],
-      "keywords": ["China", "investment", "trade agreement", "industrial cooperation", "FDI", "supply chain"]
+      "keywords": [
+        "China",
+        "investment",
+        "trade agreement",
+        "industrial cooperation",
+        "FDI",
+        "supply chain"
+      ],
+      "focus_zh": "重点关注涉及中国的跨境贸易、投资、产业合作、战略协议、基础设施及供应链合作。"
     },
     {
       "id": "us_policy",
@@ -47,7 +65,15 @@
         "US China trade policy export controls investment restrictions latest",
         "US outbound investment rules foreign investment screening policy latest"
       ],
-      "keywords": ["United States", "tariff", "sanctions", "export controls", "investment screening", "US-China"]
+      "keywords": [
+        "United States",
+        "tariff",
+        "sanctions",
+        "export controls",
+        "investment screening",
+        "US-China"
+      ],
+      "focus_zh": "重点关注美国关税、制裁、出口管制、对外及对内投资限制、贸易政策和中美经济关系。"
     },
     {
       "id": "institutional_capital",
@@ -59,7 +85,17 @@
         "Wall Street bank asset manager strategic investment acquisition divestment latest",
         "family office conglomerate large institutional investment private equity capital allocation"
       ],
-      "keywords": ["sovereign wealth fund", "asset manager", "capital allocation", "investment", "acquisition", "divestment", "family office", "conglomerate"]
+      "keywords": [
+        "sovereign wealth fund",
+        "asset manager",
+        "capital allocation",
+        "investment",
+        "acquisition",
+        "divestment",
+        "family office",
+        "conglomerate"
+      ],
+      "focus_zh": "重点关注大型银行、投资银行、资产管理公司、主权财富基金、公共投资基金、综合性企业集团、家族办公室及大型商业家族的重大资本配置决策；排除常规股价评论。"
     },
     {
       "id": "major_investments",
@@ -71,7 +107,16 @@
         "global private equity infrastructure energy logistics investment deal latest",
         "cross border M&A strategic investment sovereign fund industrial investment"
       ],
-      "keywords": ["cross-border", "M&A", "private equity", "greenfield", "factory", "infrastructure", "investment"]
+      "keywords": [
+        "cross-border",
+        "M&A",
+        "private equity",
+        "greenfield",
+        "factory",
+        "infrastructure",
+        "investment"
+      ],
+      "focus_zh": "重点关注大型跨境并购、私募股权、风险投资、绿地工业投资，以及工厂、数据中心、能源、物流、制造业和战略基础设施项目。"
     },
     {
       "id": "fed_policy",
@@ -82,7 +127,14 @@
         "Federal Reserve policy global capital flows emerging markets sovereign wealth funds",
         "central bank rate decision cross border investment capital flows institutional investors"
       ],
-      "keywords": ["Federal Reserve", "interest rate", "monetary policy", "capital flows", "institutional allocation"]
+      "keywords": [
+        "Federal Reserve",
+        "interest rate",
+        "monetary policy",
+        "capital flows",
+        "institutional allocation"
+      ],
+      "focus_zh": "仅关注美联储决策、利率、资产负债表和货币政策对主权财富基金、机构资产配置、企业集团、家族办公室、跨境投资或政府融资产生的实质性影响。"
     },
     {
       "id": "destination_policy",
@@ -94,7 +146,16 @@
         "country announces tax incentives subsidy package foreign manufacturing investment project",
         "local content rules foreign investment industrial policy investment incentives latest"
       ],
-      "keywords": ["tax incentive", "subsidy", "grant", "foreign investment screening", "industrial policy", "local content", "investment incentive"]
+      "keywords": [
+        "tax incentive",
+        "subsidy",
+        "grant",
+        "foreign investment screening",
+        "industrial policy",
+        "local content",
+        "investment incentive"
+      ],
+      "focus_zh": "关注资本和战略投资接收国的政策响应，包括税收优惠、补贴、拨款、产业政策、本地含量要求、外资审查、持股限制、许可、出口激励及监管变化；只有证据支持时才将政策与具体投资关联。"
     }
   ],
   "editorial_rules": [
