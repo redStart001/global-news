@@ -1,0 +1,15 @@
+[
+  "tests/test_engine.py::test_ai_evidence_prefers_extracted_articles_and_is_capped",
+  "tests/test_engine.py::test_clean_article_url_keeps_http_article_and_strips_fragment",
+  "tests/test_engine.py::test_config_has_six_sections_and_extraction_settings",
+  "tests/test_engine.py::test_email_renderer_does_not_emit_javascript_links",
+  "tests/test_engine.py::test_homepage_search_and_category_pages_are_filtered",
+  "tests/test_engine.py::test_html_email_renders_clickable_article_link",
+  "tests/test_engine.py::test_missing_ai_source_link_is_appended_as_markdown_link",
+  "tests/test_engine.py::test_no_results_does_not_claim_no_activity",
+  "tests/test_engine.py::test_rule_report_includes_direct_article_links_and_body",
+  "tests/test_translation.py::test_bilingual_section_contains_links_and_translation",
+  "tests/test_translation.py::test_split_text_respects_limit",
+  "tests/test_translation.py::test_translation_cache_roundtrip",
+  "tests/test_translation.py::test_translation_failure_keeps_original"
+]
