@@ -17,7 +17,6 @@
 ## 本地运行
 
 ```bash
-cd global-capital-intelligence
 python -m pip install -r requirements.txt
 # 设置环境变量 GEMINI_API_KEY（可选）和 BREVO_SMTP_KEY（发送邮件时必需）
 PYTHONPATH=src python src/run.py --no-email
@@ -37,6 +36,13 @@ PYTHONPATH=src python src/run.py --rules-only --no-email
 - `GEMINI_API_KEY`：Google AI Studio API Key（可选；缺失或调用失败会自动使用规则引擎）
 
 工作流 `Daily Global Capital Intelligence` 每天北京时间 07:11 运行，也可在 Actions 页面手动运行。
+
+## V2 更新
+
+- Gemini 对临时服务错误自动重试，失败后仍可降级到规则引擎。
+- 报告按英文段落后紧跟中文翻译的方式输出；规则引擎无法可靠翻译时会明确标注。
+- 自动过滤明显的首页、栏目页、Wikipedia 和经济日历等低质量页面。
+- 每个分类最多选择 4 条线索交给 Gemini 深度分析。
 
 ## 数据质量与边界
 
