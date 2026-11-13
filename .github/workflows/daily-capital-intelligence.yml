@@ -32,6 +32,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          GOOGLE_TRANSLATE_API_KEY: ${{ secrets.GOOGLE_TRANSLATE_API_KEY }}
+          MICROSOFT_TRANSLATOR_KEY: ${{ secrets.MICROSOFT_TRANSLATOR_KEY }}
+          MICROSOFT_TRANSLATOR_REGION: ${{ secrets.MICROSOFT_TRANSLATOR_REGION }}
+          MYMEMORY_EMAIL: ${{ secrets.MYMEMORY_EMAIL }}
+          LIBRETRANSLATE_URL: ${{ secrets.LIBRETRANSLATE_URL }}
+          LIBRETRANSLATE_API_KEY: ${{ secrets.LIBRETRANSLATE_API_KEY }}
           PYTHONPATH: src
         run: python src/run.py
       - name: Upload report artifact
