@@ -53,6 +53,42 @@ def _search_sync(query: str, limit: int, region: str, timelimit: str) -> list[di
     return output
 
 
+def _is_low_quality_page(row: dict[str, str]) -> bool:
+    """Reject obvious homepages, section indexes, calendars and encyclopedia pages."""
+    parsed = urlparse(row.get("url", ""))
+    host = (parsed.netloc or "").lower().removeprefix("www.")
+    path = (parsed.path or "").strip("/").lower()
+    title = (row.get("title") or "").strip().lower()
+    snippet = (row.get("snippet") or "").strip().lower()
+
+    if not host or host.endswith("wikipedia.org"):
+        return True
+    if any(token in host for token in ("calendar.fxstreet",)) or "economic calendar" in title:
+        return True
+
+    generic_title_phrases = (
+        "today's breaking stories", "latest news", "breaking news",
+        "news |", "news -", "home page", "homepage", "economic calendar",
+    )
+    generic_snippet_phrases = (
+        "your online source for the latest", "latest news stories and current events",
+        "read the latest news", "breaking news and headlines",
+    )
+    if any(x in title for x in generic_title_phrases):
+        return True
+    if any(x in snippet for x in generic_snippet_phrases):
+        return True
+
+    # Known section/index URL patterns that are not individual articles.
+    section_paths = {
+        "world/china", "world/us", "world", "business", "markets", "technology",
+        "news", "politics", "economy", "china", "us", "world/asia-pacific",
+    }
+    if path in section_paths or not path:
+        return True
+    return False
+
+
 async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
     search = config["search"]
     max_queries = int(search.get("max_queries", 18))
@@ -66,6 +102,9 @@ async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
                     _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "d")
                 )
                 for row in rows:
+                    if _is_low_quality_page(row):
+                        LOGGER.info("Filtered non-article/search-index result: %s", row.get("url", ""))
+                        continue
                     normalized = row["url"].split("#", 1)[0].rstrip("/")
                     if normalized not in seen:
                         seen.add(normalized)
@@ -110,7 +149,8 @@ def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now
         "",
     ]
     for section in config["sections"]:
-        lines.extend([f"## {section['title']}", f"> Scope / 监测范围：{section['focus']}", ""])
+        focus_zh = section.get("focus_zh", "监测范围说明：请结合英文范围核对本分类关注主题。")
+        lines.extend([f"## {section['title']}", "**Scope / 监测范围：**", section['focus'], focus_zh, ""])
         rows = by_section.get(section["id"], [])
         if not rows:
             lines.append("- No matching public search leads were returned. This does not establish that no activity occurred. / 本次没有获得匹配的公开搜索线索，但不能据此认定没有相关活动。")
@@ -121,6 +161,7 @@ def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now
                 f"### {index}. {row['title']}",
                 f"- Status / 状态：{status}",
                 f"- Search snippet / 搜索摘要：{row['snippet'] or 'No snippet / 无摘要'}",
+                "  中文翻译：规则引擎未调用 AI，暂无法可靠翻译原文摘要；请打开来源核对。",
                 f"- Source / 来源：[{urlparse(row['url']).netloc}]({row['url']})",
                 "- Investor, destination, sector, value and policy response / 投资方、目的地、行业、金额及政策响应：Not verified from snippet / 搜索摘要不足以核实，请打开原文确认。",
                 "",
@@ -149,12 +190,44 @@ def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now
     return "\n".join(lines)
 
 
+def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep AI input focused and balanced across the six intelligence sections."""
+    per_section = max(1, int(config.get("ai", {}).get("max_records_per_section", 4)))
+    selected: list[dict[str, str]] = []
+    counts: dict[str, int] = {}
+    for record in records:
+        section_id = record.get("section_id", "other")
+        if counts.get(section_id, 0) >= per_section:
+            continue
+        selected.append(record)
+        counts[section_id] = counts.get(section_id, 0) + 1
+    return selected
+
+
 def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
     return f"""You are the bilingual editor of a rigorous global macroeconomics and institutional-capital intelligence briefing.
 Date: {date}
-Use only the evidence records supplied below. Produce Markdown in English-Chinese pairs.
-Required sections: Executive Summary; China International Economic Cooperation; US External Economic Policy; Wall Street and Global Institutional Capital; Major Global Investments and M&A; Federal Reserve and Monetary Policy; Investment Destination Policy Responses; Capital Flow Map; Important Vocabulary (English, American IPA, Chinese); Sources and Limitations.
-For each item label status: Completed, Formally announced/planned, Reported/under negotiation, or Unverified. Distinguish source facts from your analysis. For each investment, report investor, destination, sector, disclosed amount, status and date only if evidence supports it. For recipient-country responses, identify government, tax incentives/subsidies/grants, industrial policy, foreign-investment screening, local-content rules and effective dates only if evidenced. Explain links between an investment and a policy only when sources support the link. Exclude routine stock-price and ordinary bond-price commentary. Do not invent facts, amounts, entities, dates, causal claims or contacts. Preserve source URLs and cite every claim. If evidence is insufficient, say Not publicly disclosed / 未公开 or Not verified / 尚未核实. No personalized investment advice.
+
+MANDATORY BILINGUAL LAYOUT (highest priority):
+- Every English heading must be immediately followed by its Chinese equivalent.
+- Every English paragraph or bullet must be followed immediately by its faithful Chinese translation on the next line/paragraph. Never place all English first and all Chinese later.
+- For each section, show Scope / 监测范围, then the English scope paragraph, then its complete Chinese translation.
+- For every news item, use this order: English headline; Chinese headline translation; English summary; Chinese summary translation; facts/status; Chinese translation of those facts; investment analysis in English; its Chinese translation; source URL.
+- Vocabulary must be a table with English, American IPA, and Chinese meaning.
+- If a source title or snippet is too vague to translate reliably, say so in Chinese rather than inventing content.
+
+Required sections: Executive Summary / 核心摘要; China's International Economic Cooperation / 中国对外经济合作; US External Economic Policy / 美国对外经济政策; Wall Street and Global Institutional Capital / 华尔街与全球机构资本; Major Global Investments and M&A / 全球重大投资与并购; Federal Reserve and Monetary Policy / 美联储与货币政策; Investment Destination Policy Responses / 投资目的地国家政策响应; Important Vocabulary / 重点词汇; Sources and Limitations / 来源与限制。
+
+QUALITY FILTERING:
+- Include only specific, identifiable news events, official notices, company announcements, regulatory documents or substantive analysis.
+- Exclude homepages, section/category pages, news feeds, search pages, generic landing pages, Wikipedia, calendars, and articles with no material economic, investment, trade, capital-allocation or relevant policy connection.
+- Ordinary political news is excluded unless a concrete effect on trade, investment, sanctions, tariffs, capital flows, industrial policy or business operations is evidenced.
+- Do not treat a page's generic description or a search-index timestamp as an article or publication date.
+- Do not treat a draft rule as final law. Track draft, adopted, published and effective dates separately when evidence supports them.
+
+EVIDENCE AND STATUS:
+Use only the evidence records supplied below. For each item label status as Completed, Formally announced/planned, Reported/under negotiation, Draft/proposed, or Unverified. Distinguish source facts from your analysis. For each investment, report investor, destination, sector, disclosed amount, status and date only if evidence supports it. For recipient-country responses, identify government, tax incentives/subsidies/grants, industrial policy, foreign-investment screening, local-content rules and effective dates only if evidenced. Explain links between an investment and a policy only when sources support the link. Exclude routine stock-price and ordinary bond-price commentary. Do not invent facts, amounts, entities, dates, legal effects, causal claims or contacts. Preserve source URLs and cite every claim. If evidence is insufficient, say Not publicly disclosed / 未公开 or Not verified / 尚未核实. No personalized investment advice.
+
 Editorial rules: {json.dumps(config['editorial_rules'], ensure_ascii=False)}
 Evidence: {json.dumps(records, ensure_ascii=False)}"""
 
@@ -171,10 +244,29 @@ async def gemini_enrich(config: dict[str, Any], records: list[dict[str, str]], d
         "contents": [{"role": "user", "parts": [{"text": _gemini_prompt(config, records, date)}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": int(ai.get("max_output_tokens", 7000))},
     }
+    retry_statuses = {429, 500, 502, 503, 504}
+    max_attempts = max(1, int(ai.get("max_attempts", 4)))
+    retry_delays = ai.get("retry_delays_seconds", [5, 10, 20])
     async with httpx.AsyncClient(timeout=float(ai.get("timeout_seconds", 90))) as client:
-        response = await client.post(url, params={"key": key}, json=payload)
-        response.raise_for_status()
-        data = response.json()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await client.post(url, params={"key": key}, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status not in retry_statuses or attempt >= max_attempts:
+                    raise
+                delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 5.0
+                LOGGER.warning("Gemini temporary HTTP %s (attempt %s/%s); retrying in %s seconds", status, attempt, max_attempts, delay)
+                await asyncio.sleep(delay)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if attempt >= max_attempts:
+                    raise
+                delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 5.0
+                LOGGER.warning("Gemini connection issue (attempt %s/%s): %s; retrying in %s seconds", attempt, max_attempts, exc, delay)
+                await asyncio.sleep(delay)
     try:
         return "\n".join(part["text"] for part in data["candidates"][0]["content"]["parts"] if "text" in part).strip()
     except (KeyError, IndexError, TypeError) as exc:
@@ -207,7 +299,9 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
     report = None
     if not force_rules and config["ai"].get("enabled", True):
         try:
-            report = await gemini_enrich(config, records, day)
+            ai_records = _select_ai_records(config, records)
+            LOGGER.info("Sending %s selected evidence records to Gemini from %s collected leads", len(ai_records), len(records))
+            report = await gemini_enrich(config, ai_records, day)
             mode = "gemini"
         except Exception as exc:
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
