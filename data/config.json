@@ -166,8 +166,20 @@
     "For recipient-country policy, identify the government, policy instrument, effective date and linked investment only when supported by evidence.",
     "Never invent amounts, dates, investor identities, policy details or causal relationships.",
     "Separate facts from analysis. Mark causal interpretation as analysis, not established fact.",
-    "Include original English and faithful Chinese translation for every important item.",
-    "Include important English vocabulary, American IPA and Chinese meaning.",
-    "Do not provide personalized investment advice."
-  ]
+    "Do not provide personalized investment advice.",
+    "Prefer extracted article body text over search snippets; clearly mark when full text cannot be retrieved.",
+    "Every news item must retain a direct URL to the specific original article, not a homepage, category page or search result page.",
+    "The email HTML must render each Markdown article-title link as a clickable anchor and include a readable plain-text alternative.",
+    "Distinguish publication date from event date and never infer missing dates or investment facts.",
+    "Pause paragraph-by-paragraph English-to-Chinese translation, vocabulary lists and American IPA until explicitly resumed.",
+    "Prefer extracted article body text over search snippets; clearly mark when full text cannot be retrieved.",
+    "Every news item must retain a direct URL to the specific original article, not a homepage, category page or search result page.",
+    "The email HTML must render each Markdown article-title link as a clickable anchor and include a readable plain-text alternative.",
+    "Distinguish publication date from event date and never infer missing dates or investment facts."
+  ],
+  "article_extraction": {
+    "max_articles": 48,
+    "concurrency": 5,
+    "timeout_seconds": 18
+  }
 }
