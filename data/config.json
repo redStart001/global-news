@@ -181,5 +181,28 @@
     "max_articles": 48,
     "concurrency": 5,
     "timeout_seconds": 18
+  },
+  "translation": {
+    "enabled": true,
+    "provider_order": [
+      "gemini",
+      "google",
+      "microsoft",
+      "mymemory",
+      "libretranslate"
+    ],
+    "gemini_key_env": "GEMINI_API_KEY",
+    "gemini_model": "gemini-2.5-flash",
+    "google_key_env": "GOOGLE_TRANSLATE_API_KEY",
+    "microsoft_key_env": "MICROSOFT_TRANSLATOR_KEY",
+    "microsoft_region_env": "MICROSOFT_TRANSLATOR_REGION",
+    "mymemory_email_env": "MYMEMORY_EMAIL",
+    "libre_url_env": "LIBRETRANSLATE_URL",
+    "libre_key_env": "LIBRETRANSLATE_API_KEY",
+    "cache_path": "data/translation-cache.sqlite3",
+    "timeout_seconds": 35,
+    "max_articles": 8,
+    "min_body_chars": 250,
+    "chunk_chars": 2800
   }
 }

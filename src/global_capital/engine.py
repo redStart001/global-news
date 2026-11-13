@@ -17,6 +17,8 @@ from typing import Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+from global_capital.translation import append_bilingual_section, translate_records
+
 import httpx
 
 try:
@@ -43,6 +45,7 @@ LOGGER = logging.getLogger("global_capital")
 
 def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     config = json.loads(path.read_text(encoding="utf-8"))
+    config["_root"] = str(ROOT)
     for key in ("timezone", "recipient", "smtp", "search", "ai", "sections", "editorial_rules"):
         if key not in config:
             raise ValueError(f"Missing config key: {key}")
@@ -572,6 +575,13 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
     if not report:
         report = build_rule_report(config, records, now)
+    translation_items = []
+    if config.get("translation", {}).get("enabled", True):
+        try:
+            translation_items = await translate_records(config, records)
+        except Exception as exc:
+            LOGGER.warning("Translation stage failed; keeping original-language report: %s", exc)
+        report = append_bilingual_section(report, translation_items)
     extracted_count = sum(1 for row in records if row.get("content_status") == "extracted")
     report = (
         f"> 生成模式：{mode}\n"
@@ -586,7 +596,7 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
         (out_dir / "search-results.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     if send:
         send_email(config, f"全球经济与资本流向情报 | Global Capital Intelligence | {day}", report)
-    LOGGER.info("Report saved: %s (mode=%s, records=%s)", report_path, mode, len(records))
+    LOGGER.info("Report saved: %s (mode=%s, records=%s, translated=%s)", report_path, mode, len(records), sum(1 for item in translation_items if item.get("translation_status") == "translated"))
     return report_path
 
 
