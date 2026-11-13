@@ -53,6 +53,21 @@ def _search_sync(query: str, limit: int, region: str, timelimit: str) -> list[di
     return output
 
 
+
+def _is_obviously_off_topic(row: dict[str, str]) -> bool:
+    """Conservative exclusions for obvious non-capital/business results."""
+    text = f"{row.get('title', '')} {row.get('snippet', '')}".lower()
+    exclusions = (
+        "airport currency exchange", "currency exchange rates at airport",
+        "immigration news", "asylum seeker", "visa application",
+        "weather forecast", "sports results", "football scores",
+        "horoscope", "celebrity gossip", "job vacancies",
+        "etf price today", "stock price today", "share price today",
+        "market quote", "fund directory", "economic calendar",
+    )
+    return any(term in text for term in exclusions)
+
+
 def _is_low_quality_page(row: dict[str, str]) -> bool:
     """Reject obvious homepages, section indexes, calendars and encyclopedia pages."""
     parsed = urlparse(row.get("url", ""))
@@ -102,8 +117,8 @@ async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
                     _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "d")
                 )
                 for row in rows:
-                    if _is_low_quality_page(row):
-                        LOGGER.info("Filtered non-article/search-index result: %s", row.get("url", ""))
+                    if _is_low_quality_page(row) or _is_obviously_off_topic(row):
+                        LOGGER.info("Filtered low-quality/off-topic result: %s", row.get("url", ""))
                         continue
                     normalized = row["url"].split("#", 1)[0].rstrip("/")
                     if normalized not in seen:
@@ -215,6 +230,8 @@ MANDATORY BILINGUAL LAYOUT (highest priority):
 - For every news item, use this order: English headline; Chinese headline translation; English summary; Chinese summary translation; facts/status; Chinese translation of those facts; investment analysis in English; its Chinese translation; source URL.
 - Vocabulary must be a table with English, American IPA, and Chinese meaning.
 - If a source title or snippet is too vague to translate reliably, say so in Chinese rather than inventing content.
+- Do not pad the report with weak or unrelated results merely to fill a section. It is better to report fewer high-quality items or no qualifying item.
+- Keep every English news headline, summary paragraph, fact bullet and analysis paragraph immediately followed by its Chinese translation. Do not combine unrelated English paragraphs before translating them.
 
 Required sections: Executive Summary / 核心摘要; China's International Economic Cooperation / 中国对外经济合作; US External Economic Policy / 美国对外经济政策; Wall Street and Global Institutional Capital / 华尔街与全球机构资本; Major Global Investments and M&A / 全球重大投资与并购; Federal Reserve and Monetary Policy / 美联储与货币政策; Investment Destination Policy Responses / 投资目的地国家政策响应; Important Vocabulary / 重点词汇; Sources and Limitations / 来源与限制。
 
@@ -232,45 +249,193 @@ Editorial rules: {json.dumps(config['editorial_rules'], ensure_ascii=False)}
 Evidence: {json.dumps(records, ensure_ascii=False)}"""
 
 
+
+def _contains_chinese(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", text))
+
+
+def validate_gemini_report(report: str, config: dict[str, Any]) -> None:
+    """Reject empty, truncated, non-bilingual, or structurally incomplete AI reports."""
+    if not report or len(report.strip()) < 1200:
+        raise RuntimeError("Gemini report is empty or unusually short")
+
+    if not _contains_chinese(report):
+        raise RuntimeError("Gemini report contains no Chinese translation")
+
+    # Require both language labels for every configured intelligence section.
+    missing_sections = []
+    for section in config.get("sections", []):
+        title = str(section.get("title", ""))
+        parts = [part.strip() for part in title.split("/", 1)]
+        if len(parts) == 2:
+            english, chinese = parts
+            if english.lower() not in report.lower() or chinese not in report:
+                missing_sections.append(title)
+    if missing_sections:
+        raise RuntimeError(
+            "Gemini report is missing required bilingual sections: "
+            + "; ".join(missing_sections)
+        )
+
+    lower = report.lower()
+    if "important vocabulary" not in lower and "重点词汇" not in report:
+        raise RuntimeError("Gemini report is missing the vocabulary section")
+
+    # Check the most important adjacency rule: every numbered news headline
+    # must be followed by a Chinese headline line.
+    lines = report.splitlines()
+    for index, line in enumerate(lines):
+        if re.match(r"^\s*#{2,4}\s+\d+[\.)]\s+\S", line):
+            next_line = ""
+            for candidate in lines[index + 1:]:
+                if candidate.strip():
+                    next_line = candidate.strip()
+                    break
+            if not _contains_chinese(next_line):
+                raise RuntimeError(
+                    f"English news headline is not immediately followed by Chinese: {line[:120]}"
+                )
+
+    # Check English prose/bullets for an adjacent Chinese translation.
+    # Exempt headings, tables, links/sources, and short labels.
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "|", ">", "---", "http")):
+            continue
+        if stripped.lower().startswith(("source:", "- source", "sources:", "- sources")):
+            continue
+        is_prose = stripped.startswith(("- ", "* ")) or (
+            len(re.findall(r"[A-Za-z]{2,}", stripped)) >= 14
+        )
+        if not is_prose or _contains_chinese(stripped):
+            continue
+        next_line = ""
+        for candidate in lines[index + 1:]:
+            if candidate.strip():
+                next_line = candidate.strip()
+                break
+        if not _contains_chinese(next_line):
+            raise RuntimeError(
+                f"English paragraph/bullet lacks an adjacent Chinese translation: {stripped[:120]}"
+            )
+
+    # Catch obvious output truncation at a token boundary.
+    if report.rstrip().endswith(("...", "…", "**", "|")):
+        raise RuntimeError("Gemini report appears to be truncated")
+
+
+async def _gemini_request(
+    client: httpx.AsyncClient,
+    model: str,
+    key: str,
+    payload: dict[str, Any],
+    max_attempts: int,
+    retry_delays: list[Any],
+) -> dict[str, Any]:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    retry_statuses = {429, 500, 502, 503, 504}
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = await client.post(url, params={"key": key}, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            candidates = data.get("candidates") or []
+            if not candidates:
+                feedback = data.get("promptFeedback", {})
+                raise RuntimeError(f"Gemini returned no candidates: {feedback}")
+            finish_reason = str(candidates[0].get("finishReason", "")).upper()
+            if finish_reason == "MAX_TOKENS":
+                raise RuntimeError("Gemini output reached max_output_tokens and was truncated")
+            if finish_reason in {"SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT"}:
+                raise RuntimeError(f"Gemini generation blocked: {finish_reason}")
+            return data
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            status = exc.response.status_code
+            detail = exc.response.text[:500].replace("\n", " ")
+            if status not in retry_statuses or attempt >= max_attempts:
+                LOGGER.warning("Gemini model %s failed with HTTP %s: %s", model, status, detail)
+                raise
+            delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            LOGGER.warning(
+                "Gemini model %s temporary HTTP %s (attempt %s/%s); retrying in %.1f seconds",
+                model, status, attempt, max_attempts, delay
+            )
+            await asyncio.sleep(delay)
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                raise
+            delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            LOGGER.warning(
+                "Gemini model %s connection issue (attempt %s/%s): %s; retrying in %.1f seconds",
+                model, attempt, max_attempts, exc, delay
+            )
+            await asyncio.sleep(delay)
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"Gemini request failed for model {model}")
+
+
 async def gemini_enrich(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
     ai = config["ai"]
     key = os.getenv(ai.get("api_key_env", "GEMINI_API_KEY"), "").strip()
     if not key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
-    model = ai.get("model", "gemini-2.5-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+    primary_model = ai.get("model", "gemini-3.8-flash")
+    fallback_models = ai.get("fallback_models", ["gemini-3.7-flash"])
+    models = [primary_model] + [m for m in fallback_models if m and m != primary_model]
+
     payload = {
-        "systemInstruction": {"parts": [{"text": "Follow evidence and attribution rules exactly. Never fabricate."}]},
+        "systemInstruction": {
+            "parts": [{
+                "text": (
+                    "Follow evidence and attribution rules exactly. Never fabricate. "
+                    "Every English prose paragraph and news headline must be followed "
+                    "immediately by its faithful Chinese translation."
+                )
+            }]
+        },
         "contents": [{"role": "user", "parts": [{"text": _gemini_prompt(config, records, date)}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": int(ai.get("max_output_tokens", 7000))},
+        # Gemini 3.8 migration guidance: omit legacy temperature/top_p/top_k settings.
+        "generationConfig": {
+            "maxOutputTokens": int(ai.get("max_output_tokens", 7000))
+        },
     }
-    retry_statuses = {429, 500, 502, 503, 504}
-    max_attempts = max(1, int(ai.get("max_attempts", 4)))
-    retry_delays = ai.get("retry_delays_seconds", [5, 10, 20])
+
+    primary_attempts = max(1, int(ai.get("max_attempts", 4)))
+    primary_delays = ai.get("retry_delays_seconds", [10, 20, 40])
+    fallback_attempts = max(1, int(ai.get("fallback_max_attempts", 2)))
+    fallback_delays = ai.get("fallback_retry_delays_seconds", [5])
+
+    errors: list[str] = []
     async with httpx.AsyncClient(timeout=float(ai.get("timeout_seconds", 90))) as client:
-        for attempt in range(1, max_attempts + 1):
+        for index, model in enumerate(models):
+            attempts = primary_attempts if index == 0 else fallback_attempts
+            delays = primary_delays if index == 0 else fallback_delays
+            if index:
+                LOGGER.warning(
+                    "Primary Gemini model %s unavailable or invalid; trying fallback model %s",
+                    primary_model, model
+                )
             try:
-                response = await client.post(url, params={"key": key}, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                break
-            except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
-                if status not in retry_statuses or attempt >= max_attempts:
-                    raise
-                delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 5.0
-                LOGGER.warning("Gemini temporary HTTP %s (attempt %s/%s); retrying in %s seconds", status, attempt, max_attempts, delay)
-                await asyncio.sleep(delay)
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                if attempt >= max_attempts:
-                    raise
-                delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 5.0
-                LOGGER.warning("Gemini connection issue (attempt %s/%s): %s; retrying in %s seconds", attempt, max_attempts, exc, delay)
-                await asyncio.sleep(delay)
-    try:
-        return "\n".join(part["text"] for part in data["candidates"][0]["content"]["parts"] if "text" in part).strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("Gemini returned an unexpected response format") from exc
+                data = await _gemini_request(
+                    client, model, key, payload, attempts, list(delays)
+                )
+                parts = data["candidates"][0]["content"]["parts"]
+                report = "\n".join(
+                    part["text"] for part in parts if isinstance(part, dict) and "text" in part
+                ).strip()
+                validate_gemini_report(report, config)
+                LOGGER.info("Gemini report validated successfully using model %s", model)
+                return report
+            except Exception as exc:
+                errors.append(f"{model}: {type(exc).__name__}: {exc}")
+                LOGGER.warning("Gemini model %s did not produce a valid report: %s", model, exc)
+
+    raise RuntimeError("All Gemini models failed: " + " | ".join(errors))
 
 
 def send_email(config: dict[str, Any], subject: str, body: str) -> None:
