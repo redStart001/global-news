@@ -3,12 +3,12 @@
   "timezone": "Asia/Shanghai",
   "recipient": "rf315@foxmail.com",
   "smtp": {
-    "host": "smtp-relay.brevo.com",
+    "host": "smtp.gmail.com",
     "port": 465,
-    "username": "c25cc1001@smtp-brevo.com",
+    "username": "dxp0755@gmail.com",
     "sender": "dxp0755@gmail.com",
     "sender_name": "Horizon Global Investment Intelligence",
-    "password_env": "BREVO_SMTP_KEY"
+    "password_env": "GMAIL_APP_PASSWORD"
   },
   "search": {
     "max_results_per_query": 8,
