@@ -348,14 +348,18 @@ CONFIGURED SECTIONS: {json.dumps([s.get("title", "") for s in config["sections"]
 SOURCE RECORDS (metadata and snippets only): {json.dumps(records, ensure_ascii=False)}"""
 
 def validate_gemini_report(report: str, records: list[dict[str, str]]) -> None:
-    if not report or len(report.strip()) < 300:
+    if not report or len(report.strip()) < 120:
         raise RuntimeError("Gemini report is empty or unusually short")
     if report.rstrip().endswith(("...", "…", "**", "|")):
         raise RuntimeError("Gemini report appears to be truncated")
-    for row in records:
-        url = row.get("url", "").strip()
-        if url and url not in report:
-            raise RuntimeError(f"Gemini report omitted a source URL: {url}")
+    if "## Section 1" not in report or "## Section 2" not in report:
+        raise RuntimeError("Gemini report omitted one of the two required sections")
+    if "中文：" not in report:
+        raise RuntimeError("Gemini report omitted the Chinese line paired with English briefs")
+    if not re.search(r"\[[^\]]+\]\(https?://[^)]+\)", report):
+        # A no-news report may legitimately contain no article links.
+        if not ("No qualifying item" in report or "今日未发现" in report):
+            raise RuntimeError("Gemini report contains no direct article link")
 
 
 async def _gemini_request(
@@ -550,7 +554,6 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             ai_records = _select_ai_records(config, records)
             LOGGER.info("Sending %s selected evidence records to Gemini from %s collected leads", len(ai_records), len(records))
             report = await gemini_enrich(config, ai_records, day)
-            report = _append_missing_source_links(report, ai_records)
             mode = "gemini"
         except Exception as exc:
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
