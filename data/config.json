@@ -12,7 +12,7 @@
   },
   "search": {
     "max_results_per_query": 8,
-    "max_queries": 16,
+    "max_queries": 24,
     "delay_seconds": 1,
     "region": "wt-wt",
     "timelimit": "d"
@@ -30,54 +30,82 @@
       10,
       20
     ],
-    "max_records_per_section": 12
+    "max_records_per_section": 8
   },
   "output": {
     "directory": "data/reports",
-    "save_raw_results": true
+    "save_raw_results": true,
+    "send_only_if_ai_valid": true
   },
   "sections": [
     {
       "id": "foreign_investment_china",
-      "title": "Foreign Investment in China / 外资对中国投资",
-      "focus": "Foreign direct investment and strategic capital entering China: target sectors, regions, projects, investor direction, and China's policy response or countermeasures. Only material investment or policy developments.",
-      "focus_zh": "关注外资流入中国的实际投资、投资方向，以及中国针对外资的政策措施。",
+      "title": "Foreign Capital into China / 外资流入中国",
+      "focus": "Specific foreign direct investment into mainland China: named foreign investors, projects, acquisitions, new factories, expansions, sectors, provinces/cities, capital amounts, withdrawals, and China's inbound investment policies and responses.",
+      "focus_zh": "只关注外资进入中国的具体项目、企业、行业、地区、金额、增资并购撤资，以及中国吸引外资、开放准入和监管应对政策。",
       "queries": [
-        "foreign investors investment in China new projects sectors 2026",
-        "Blackstone KKR BlackRock Temasek investment China 2026",
-        "China foreign direct investment policy response opening measures 2026",
-        "China government response foreign investment industrial policy 2026",
-        "multinational companies expand investment China manufacturing technology 2026",
-        "foreign capital China investment direction healthcare technology energy consumer 2026",
-        "China inbound investment announcement foreign company project 2026",
-        "China foreign investment negative list opening policy announcement 2026"
+        "China inbound foreign direct investment FDI new projects foreign companies 2026",
+        "foreign company investment expansion factory China 2026 project announcement",
+        "site:english.mofcom.gov.cn foreign investment China policy 2026",
+        "site:english.www.gov.cn foreign investment China action plan market access 2026",
+        "site:english.ndrc.gov.cn foreign investment China project policy 2026",
+        "Reuters foreign investors China investment manufacturing technology 2026",
+        "multinational company acquisition investment China 2026 announced",
+        "China foreign capital withdrawal divestment investment restrictions policy 2026"
       ],
       "keywords": [
-        "foreign investment China",
-        "FDI China",
+        "foreign direct investment",
+        "FDI",
+        "foreign investor",
+        "foreign capital",
         "inbound investment",
-        "Blackstone",
-        "KKR",
-        "BlackRock",
-        "Temasek",
-        "investment policy",
-        "foreign capital"
+        "invest in China",
+        "China project",
+        "China factory",
+        "China acquisition"
       ]
     },
     {
-      "id": "global_conglomerate_investment",
-      "title": "Global Major Funds and Conglomerates / 全球重点财团投资",
-      "focus": "Where major global funds, private equity firms, asset managers, sovereign wealth funds and conglomerates invest: destination countries, sectors, acquisitions, new projects, increases, exits and announced plans. Prioritize Blackstone, BlackRock, KKR, Carlyle, Berkshire Hathaway, Temasek, GIC, ADIA and PIF.",
-      "focus_zh": "关注大型私募股权基金、资产管理公司、主权财富基金和综合性财团的全球资本配置。",
+      "id": "china_outbound_investment",
+      "title": "China Outbound Investment / 中国资本出海",
+      "focus": "Specific overseas investment by Chinese companies, funds and state-owned enterprises: destination countries, sectors, greenfield factories, acquisitions, infrastructure, energy, mining, EV and battery supply chains, investment amounts, exits, and China's outbound investment policy, approvals, safeguards and countermeasures.",
+      "focus_zh": "只关注中国企业、基金和国有资本投向海外哪些国家和行业，包括建厂、并购、能源矿产、基建、新能源产业链、投资金额、撤资，以及中国对外投资审批、风险保障和应对政策。",
       "queries": [
-        "Blackstone investment new country sector acquisition 2026",
-        "BlackRock strategic investment country infrastructure private markets 2026",
-        "KKR investment acquisition country sector 2026",
-        "Carlyle Group investment acquisition country 2026",
-        "Temasek GIC investment country sector 2026",
+        "China outbound direct investment ODI overseas projects countries sectors 2026",
+        "Chinese companies overseas factory investment acquisition 2026",
+        "China overseas investment battery EV critical minerals Southeast Asia 2026",
+        "site:english.mofcom.gov.cn China outbound investment ODI 2026",
+        "site:english.www.gov.cn China overseas investment regulation policy 2026",
+        "site:en.ndrc.gov.cn overseas investment China project approval 2026",
+        "Chinese state owned enterprises overseas energy infrastructure investment 2026",
+        "China outbound investment overseas policy risk protection countermeasures 2026"
+      ],
+      "keywords": [
+        "China outbound investment",
+        "Chinese overseas investment",
+        "outward direct investment",
+        "ODI",
+        "Chinese company",
+        "Chinese investor",
+        "overseas acquisition",
+        "overseas factory",
+        "Belt and Road"
+      ]
+    },
+    {
+      "id": "global_fund_flows",
+      "title": "Global Major Funds and Conglomerates / 全球大型财团资本流向",
+      "focus": "Specific investments, acquisitions, exits and capital reallocations by Blackstone, BlackRock, KKR, Carlyle, Berkshire Hathaway, Temasek, GIC, ADIA, PIF and other major funds or conglomerates, identifying destination country, sector, asset/project and disclosed amount.",
+      "focus_zh": "追踪全球大型基金、主权财富基金和财团的具体投资、并购、退出和资本转移，明确投资国家、行业、项目及披露金额。",
+      "queries": [
+        "Blackstone investment acquisition infrastructure data centers energy 2026 country",
+        "BlackRock investment private markets infrastructure country 2026",
+        "KKR investment acquisition new country sector 2026",
+        "Carlyle Group investment acquisition country sector 2026",
+        "Temasek GIC investment acquisition country sector 2026",
         "ADIA PIF sovereign wealth fund investment country sector 2026",
         "Berkshire Hathaway major investment acquisition country 2026",
-        "major private equity sovereign wealth fund investment announced today"
+        "Reuters global private equity sovereign wealth fund investment deals 2026"
       ],
       "keywords": [
         "Blackstone",
@@ -90,25 +118,22 @@
         "ADIA",
         "PIF",
         "sovereign wealth fund",
-        "investment",
-        "acquisition"
+        "private equity",
+        "asset manager"
       ]
     }
   ],
   "editorial_rules": [
-    "Collect only concise news metadata and short summaries; do not download, store, or reproduce full article bodies.",
-    "Every item must be a specific article or official announcement, never a homepage, category page, search page, index, sitemap, market quote page or directory.",
-    "Every item must show a sequence number, a complete English headline, one concise English brief, and its Chinese translation immediately on the next line.",
-    "Use the article headline as a clickable direct link to the specific original article. Also show the full plain-text URL on a separate Copy link line so readers can select and copy it.",
-    "Email clients do not reliably support clipboard JavaScript; provide the raw URL as selectable text rather than a nonfunctional copy button.",
-    "Prioritize official company announcements, government and regulator releases, and reliable media.",
-    "Distinguish completed, formally announced/planned, reported/under negotiation, and unverified.",
-    "Include investor, destination country/region, sector, deal or policy action, amount and currency only when supported; otherwise mark not disclosed or unavailable.",
-    "Separate event date from publication date; do not infer missing dates.",
-    "Do not turn a search snippet into an established fact. Use a cautious brief and clearly flag unverified information.",
-    "Exclude routine stock and bond price movements, generic market commentary, fund rankings, company directories, old evergreen explainers and unrelated stories.",
-    "No full-text extraction, no paragraph-by-paragraph translation, no vocabulary list and no American IPA.",
-    "Keep the email visually clean: only two sections, numbered entries, one English line followed by one Chinese line, and a source/copy URL line."
+    "Only include specific capital-flow events or material investment policy actions in the three configured themes: foreign capital into China; Chinese capital invested overseas; global major funds' capital allocation.",
+    "Reject consumer stories, personal finance, bailiffs, mortgages, savings, jobs, celebrity, sports, weather, routine stock prices, generic macro commentary, rankings, directories, homepages and category pages.",
+    "Every news item must identify at least one investor or capital source and a destination country/region or China, plus an investment action or material investment policy. If any key element is unavailable, clearly say not disclosed; do not infer.",
+    "Each item must have a numbered English headline linked directly to a specific article or official release, one concise English brief, its accurate Chinese translation immediately on the next line, and a plain-text original URL on a separate Copy link line.",
+    "Never send an English-only item. Every EN line must be immediately followed by a Chinese： line. If accurate translation cannot be generated, do not send the email.",
+    "Use only source title, snippet and short metadata; do not download, store or reproduce full article bodies.",
+    "Prefer official government, regulator, investor/company announcements and credible financial media. Cross-check material figures when possible.",
+    "Distinguish completed investment, announced/planned investment, reported negotiations and unverified claims.",
+    "Include amount, currency, sector, country, project and date only when supported by source records.",
+    "Keep the email concise: three sections, numbered items, English-Chinese paired lines, source URL. No methodology, glossary, IPA or generic disclaimers."
   ],
   "article_extraction": {
     "max_articles": 40,
