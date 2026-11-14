@@ -31,7 +31,7 @@ jobs:
       - name: Generate and send report
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           PYTHONPATH: src
         run: python src/run.py
       - name: Upload report artifact
