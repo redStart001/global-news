@@ -85,7 +85,7 @@ def test_ai_evidence_prefers_extracted_articles_and_is_capped():
 
 def test_html_email_renders_clickable_article_link():
     url = "https://example.com/article?id=123"
-    rendered = _render_email_html(f"## News\\n\\n[Read the article]({url})")
+    rendered = _render_email_html(f"## News\n\n[Read the article]({url})")
     assert f'href="{url}"' in rendered
     assert "Read the article</a>" in rendered
 
@@ -93,12 +93,12 @@ def test_html_email_renders_clickable_article_link():
 def test_html_email_has_separate_expandable_english_and_chinese_briefs():
     url = "https://example.com/news/investment"
     report = (
-        "## Section 1: Foreign Capital into China\\n\\n"
-        f"1. [Manufacturer expands in China]({url})\\n"
-        "中文标题：制造商扩大在中国的生产\\n"
-        "EN: The company announced a new factory in China.\\n"
-        "中文：该公司宣布在中国建设一座新工厂。\\n"
-        f"Source: [View original]({url})\\n"
+        "## Section 1: Foreign Capital into China\n\n"
+        f"1. [Manufacturer expands in China]({url})\n"
+        "中文标题：制造商扩大在中国的生产\n"
+        "EN: The company announced a new factory in China.\n"
+        "中文：该公司宣布在中国建设一座新工厂。\n"
+        f"Source: [View original]({url})\n"
     )
     rendered = _render_email_html(report)
     assert rendered.count("<details") == 2
