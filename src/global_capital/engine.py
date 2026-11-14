@@ -209,19 +209,53 @@ def _is_relevant_to_section(row: dict[str, str], section_id: str) -> bool:
 
     return has_investment_evidence and any(term in text for term in china_terms)
 
-async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
+def _site_domain(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower().removeprefix("www.")
+    return host
+
+
+def _site_history_path(config: dict[str, Any]) -> Path:
+    return ROOT / config.get("search", {}).get("site_history_path", "data/search_site_history.json")
+
+
+def _load_site_history(path: Path, week_start: str) -> set[str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("week_start") == week_start:
+            return {str(domain).lower() for domain in data.get("domains", []) if domain}
+    except (OSError, json.JSONDecodeError):
+        pass
+    return set()
+
+
+async def collect(config: dict[str, Any], cycle: str | None = None) -> list[dict[str, str]]:
     search = config["search"]
+    cycle = (cycle or os.getenv("SEARCH_CYCLE", "monday")).lower()
+    now = datetime.now(ZoneInfo(config["timezone"]))
+    week_start = (now.date() - __import__("datetime").timedelta(days=now.weekday())).isoformat()
+    history_path = _site_history_path(config)
+    previous_domains = _load_site_history(history_path, week_start) if cycle == "thursday" else set()
+    current_domains: set[str] = set()
     max_queries = int(search.get("max_queries", 18))
-    limit = int(search.get("max_results_per_query", 5))
+    limit = int(search.get("thursday_max_results_per_query", max(search.get("max_results_per_query", 5), 16))
+                if cycle == "thursday" else search.get("max_results_per_query", 5))
     all_rows: list[dict[str, str]] = []
     seen: set[str] = set()
+    skipped_domains: set[str] = set()
+
     for section in config["sections"]:
         for query in section["queries"]:
             try:
                 rows = await asyncio.to_thread(
-                    _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "d")
+                    _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "w")
                 )
                 for row in rows:
+                    domain = _site_domain(row.get("url", ""))
+                    if domain:
+                        current_domains.add(domain)
+                    if cycle == "thursday" and domain in previous_domains:
+                        skipped_domains.add(domain)
+                        continue
                     row["section_id"] = section["id"]
                     row["section_title"] = section["title"]
                     if (_is_low_quality_page(row) or _is_obviously_off_topic(row)
@@ -237,9 +271,22 @@ async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
             await asyncio.sleep(float(search.get("delay_seconds", 1.0)))
             max_queries -= 1
             if max_queries <= 0:
-                return all_rows
-    return all_rows
+                break
+        if max_queries <= 0:
+            break
 
+    domains_to_save = current_domains if cycle == "monday" else previous_domains | current_domains
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.write_text(json.dumps({
+        "week_start": week_start,
+        "last_cycle": cycle,
+        "domains": sorted(domains_to_save)
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    LOGGER.info(
+        "Search cycle=%s; results=%s; newly observed domains=%s; skipped Monday domains=%s",
+        cycle, len(all_rows), len(current_domains - previous_domains), len(skipped_domains)
+    )
+    return all_rows
 
 
 def _clean_article_url(value: str, base_url: str) -> str:
@@ -397,9 +444,10 @@ def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: 
     sections = "\n".join(
         f"## Section {index}: {section['title']}\n" +
         "1. [English headline](DIRECT_ARTICLE_URL)\n" +
-        "EN: One concise factual sentence identifying investor, destination and sector/action.\n" +
-        "中文：Accurate, complete Chinese translation of the EN sentence.\n" +
-        "Copy link: https://direct-original-article-url"
+        "中文标题：准确的中文标题\n" +
+        "EN: A concise factual brief, normally 2-3 lines.\n" +
+        "中文：对应的准确中文正文，通常2-3行。\n" +
+        "Source: [View original](DIRECT_ORIGINAL_URL)"
         for index, section in enumerate(config["sections"], 1)
     )
     return f"""You are the editor of Horizon Global Investment Intelligence.
@@ -417,10 +465,16 @@ STRICT TOPIC FILTER:
 - Do not place a Chinese outbound investment story in Section 1, or an inbound foreign investment story in Section 2.
 
 LANGUAGE AND FORMAT:
-- Every English brief line beginning "EN:" MUST be followed immediately by a complete accurate Chinese translation line beginning "中文：".
+- For EVERY item, use this exact structure and order:
+  1. [English headline](DIRECT_ARTICLE_URL)
+  中文标题：accurate Chinese translation of the headline
+  EN: concise factual brief (normally 2-3 lines; do not add unnecessary background)
+  中文：accurate Chinese translation of the brief (normally 2-3 lines)
+  Source: [View original](EXACT_DIRECT_ARTICLE_URL)
+- The English title and Chinese title must each be one line. Keep English and Chinese briefs concise, normally 2-3 lines each.
 - Never output an English-only item, placeholder translation, or "translation unavailable" message.
-- If the supplied title/snippet is insufficient to produce a reliable Chinese translation, omit that item.
-- Every headline must link to the direct individual article or official announcement. Repeat the exact URL on a separate "Copy link:" line.
+- If the supplied title/snippet is insufficient to produce a reliable Chinese title or brief, omit that item.
+- Repeat the exact original URL on the separate Source line.
 - Number items sequentially within each section.
 - If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified in the current search window." followed by "中文：当前搜索范围内未核实到符合条件的资本流向信息。"
 
@@ -442,14 +496,19 @@ def validate_gemini_report(report: str, records: list[dict[str, str]]) -> None:
     for index in range(1, 4):
         if f"## Section {index}" not in report:
             raise RuntimeError(f"Gemini report omitted required section {index}")
-    if "中文：" not in report:
-        raise RuntimeError("Gemini report omitted the Chinese line paired with English briefs")
+    if "中文：" not in report or "中文标题：" not in report:
+        raise RuntimeError("Gemini report omitted Chinese titles or paired Chinese briefs")
     if "中文：中文简报暂不可用" in report or "translation unavailable" in report.lower():
         raise RuntimeError("Gemini report contains an untranslated placeholder")
     for match in re.finditer(r"(?m)^EN:.*$", report):
         following = report[match.end():].lstrip("\r\n")
         if not following.startswith("中文："):
             raise RuntimeError("An English brief is not immediately followed by Chinese translation")
+    item_count = len(re.findall(r"(?m)^\d+\.\s+\[.+?\]\(https?://", report))
+    title_count = len(re.findall(r"(?m)^中文标题：\S", report))
+    source_count = len(re.findall(r"(?m)^Source:\s+\[.+?\]\(https?://", report))
+    if item_count != title_count or item_count != source_count:
+        raise RuntimeError("Every numbered item must have a Chinese title and a separate original-source link")
     if not re.search(r"\[[^\]]+\]\(https?://[^)]+\)", report):
         # A no-news report may legitimately contain no article links.
         if not ("No qualifying capital-flow update verified in the current search window." in report or "今日未核实到符合条件的资本流向信息" in report):
@@ -588,33 +647,77 @@ def _append_missing_source_links(report: str, records: list[dict[str, str]]) -> 
     return report
 
 def _render_email_html(markdown_text: str) -> str:
-    """Render Markdown into HTML so article titles are clickable in email clients."""
+    """Render numbered bilingual items with independently expandable EN and ZH briefs."""
+    item_pattern = re.compile(
+        r"(?ms)^(\d+)\.\s+\[([^\]]+)\]\((https?://[^)]+)\)\s*\n"
+        r"(.*?)(?=^\d+\.\s+\[|\n## Section|\Z)"
+    )
+
+    def esc(value: str) -> str:
+        return html.escape(value.strip(), quote=True)
+
+    def render_item(match: re.Match[str]) -> str:
+        number, en_title, url, block = match.groups()
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        zh_title = next((line.split("：", 1)[1].strip() for line in lines if line.startswith("中文标题：")), "")
+        en_brief = next((line[3:].strip() for line in lines if line.startswith("EN:")), "")
+        zh_brief = next((line[3:].strip() for line in lines if line.startswith("中文：")), "")
+        if not (zh_title and en_brief and zh_brief):
+            return match.group(0)
+        domain = _site_domain(url) or urlparse(url).netloc
+        return (
+            f'<div class="news-item">'
+            f'<div class="headline"><span class="item-number">{int(number):02d}.</span> '
+            f'<a class="en-title" href="{esc(url)}" title="{esc(en_title)}">{esc(en_title)}</a></div>'
+            f'<div class="zh-title">{esc(zh_title)}</div>'
+            f'<details class="language"><summary><span class="preview">EN: {esc(en_brief)}</span>'
+            f'<span class="expand-label">Read full English / 展开英文</span></summary>'
+            f'<div class="full-text">{esc(en_brief)}</div></details>'
+            f'<details class="language"><summary><span class="preview">中文：{esc(zh_brief)}</span>'
+            f'<span class="expand-label">展开中文全文</span></summary>'
+            f'<div class="full-text">{esc(zh_brief)}</div></details>'
+            f'<div class="source"><a href="{esc(url)}">Original source · {esc(domain)}</a></div>'
+            f'</div>'
+        )
+
+    prepared = item_pattern.sub(render_item, markdown_text)
     if markdown_lib is not None:
         rendered = markdown_lib.markdown(
-            markdown_text, extensions=["tables", "fenced_code", "sane_lists"],
+            prepared, extensions=["tables", "fenced_code", "sane_lists"],
             output_format="html5"
         )
     else:
-        escaped = html.escape(markdown_text)
-        escaped = re.sub(r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
-                         r'<a href="\2">\1</a>', escaped)
-        rendered = "<pre>" + escaped + "</pre>"
+        rendered = "<pre>" + html.escape(prepared) + "</pre>"
     if bleach is not None:
         rendered = bleach.clean(
             rendered,
             tags={"a", "p", "h1", "h2", "h3", "h4", "ul", "ol", "li",
                   "blockquote", "strong", "em", "code", "pre", "table",
-                  "thead", "tbody", "tr", "th", "td", "hr", "br"},
-            attributes={"a": ["href", "title"], "th": ["align"], "td": ["align"]},
+                  "thead", "tbody", "tr", "th", "td", "hr", "br",
+                  "div", "span", "details", "summary"},
+            attributes={"a": ["href", "title"], "th": ["align"], "td": ["align"],
+                        "div": ["class"], "span": ["class"], "details": ["class"]},
             protocols={"http", "https", "mailto"}, strip=True
         )
     style = """<style>
-    body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#202124;line-height:1.65}
+    body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#202124;line-height:1.5}
     .report{max-width:760px;margin:0 auto;padding:12px}
-    h1{font-size:24px;color:#17365d;border-bottom:2px solid #d9e2f3;padding-bottom:10px}
-    h2{font-size:19px;color:#1f4e79;margin-top:28px}h3{font-size:16px;color:#333;margin-top:22px}
-    a{color:#0563c1;text-decoration:underline;word-break:break-word}
-    li,p{margin:8px 0}pre{white-space:pre-wrap;word-break:break-word}
+    h1{font-size:22px;color:#17365d;border-bottom:2px solid #d9e2f3;padding-bottom:9px}
+    h2{font-size:17px;color:#1f4e79;margin:24px 0 10px}
+    .news-item{border-bottom:1px solid #e5e7eb;padding:10px 0 12px;margin:0 0 8px}
+    .headline{display:flex;gap:6px;align-items:flex-start;font-weight:700}
+    .item-number{flex:0 0 auto;color:#526071}
+    .en-title{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .zh-title{font-weight:600;margin:5px 0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .language{margin:5px 0;border:0}
+    .language summary{display:block;cursor:pointer;list-style:none}
+    .language summary::-webkit-details-marker{display:none}
+    .preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;max-height:4.5em}
+    .expand-label{display:inline-block;color:#0563c1;font-size:12px;margin-top:3px;text-decoration:underline}
+    .full-text{padding:6px 8px;margin-top:4px;background:#f6f8fa;white-space:pre-wrap;overflow-wrap:anywhere}
+    .source{font-size:12px;margin-top:7px}
+    a{color:#0563c1;text-decoration:underline;overflow-wrap:anywhere}
+    li,p{margin:7px 0}pre{white-space:pre-wrap;word-break:break-word}
     table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:7px}
     </style>"""
     return f"<!doctype html><html><head><meta charset='utf-8'>{style}</head><body><main class='report'>{rendered}</main></body></html>"
@@ -642,7 +745,8 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
     config = load_config(config_path)
     now = datetime.now(ZoneInfo(config["timezone"]))
     day = now.strftime("%Y-%m-%d")
-    records = await collect(config)
+    cycle = os.getenv("SEARCH_CYCLE", "monday").lower()
+    records = await collect(config, cycle=cycle)
     records = await enrich_articles(config, records)
     mode = "rules"
     report = None
@@ -667,7 +771,7 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
         (out_dir / "search-results.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     if send:
         send_email(config, f"Horizon Global Investment Intelligence | {day}", report)
-    LOGGER.info("Report saved: %s (mode=%s, records=%s)", report_path, mode, len(records))
+    LOGGER.info("Report saved: %s (mode=%s, cycle=%s, records=%s)", report_path, mode, cycle, len(records))
     return report_path
 
 
