@@ -422,7 +422,7 @@ LANGUAGE AND FORMAT:
 - If the supplied title/snippet is insufficient to produce a reliable Chinese translation, omit that item.
 - Every headline must link to the direct individual article or official announcement. Repeat the exact URL on a separate "Copy link:" line.
 - Number items sequentially within each section.
-- If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified in the current search window." followed by "中文：今日未核实到符合条件的资本流向信息。"
+- If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified in the current search window." followed by "中文：当前搜索范围内未核实到符合条件的资本流向信息。"
 
 EVIDENCE RULES:
 - Only use supplied title, short search snippet and metadata. Do not invent facts, amounts, dates, entities or causal links.
@@ -452,7 +452,7 @@ def validate_gemini_report(report: str, records: list[dict[str, str]]) -> None:
             raise RuntimeError("An English brief is not immediately followed by Chinese translation")
     if not re.search(r"\[[^\]]+\]\(https?://[^)]+\)", report):
         # A no-news report may legitimately contain no article links.
-        if not ("No qualifying item" in report or "今日未发现" in report):
+        if not ("No qualifying capital-flow update verified in the current search window." in report or "今日未核实到符合条件的资本流向信息" in report):
             raise RuntimeError("Gemini report contains no direct article link")
 
 
