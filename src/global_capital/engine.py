@@ -176,11 +176,12 @@ def _clean_article_url(value: str, base_url: str) -> str:
 
 async def _fetch_one_article(client: httpx.AsyncClient, row: dict[str, str],
                              semaphore: asyncio.Semaphore) -> dict[str, str]:
+    """Fetch article metadata only; never extract or store the full article body."""
     enriched = dict(row)
     enriched.setdefault("original_url", row.get("url", ""))
-    enriched.update({"content_text": "", "content_status": "not_fetched",
+    enriched.update({"content_text": "", "content_status": "metadata_only",
                      "published_date": "", "author": "", "resolved_url": row.get("url", ""),
-                     "link_status": "not_verified"})
+                     "link_status": "not_verified", "meta_description": ""})
     async with semaphore:
         try:
             response = await client.get(row["url"], follow_redirects=True)
@@ -189,43 +190,46 @@ async def _fetch_one_article(client: httpx.AsyncClient, row: dict[str, str],
             enriched["link_status"] = "reachable"
             content_type = response.headers.get("content-type", "").lower()
             if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
-                enriched["content_status"] = "not_html"
+                enriched["content_status"] = "metadata_unavailable"
                 return enriched
             final_url, html_text = str(response.url), response.text
             enriched["resolved_url"] = final_url
-            extracted, metadata = "", None
+            # Keep only short page metadata, never article body text.
+            for pattern in (
+                r'<meta[^>]+(?:name|property)=["\'](?:description|og:description|twitter:description)["\'][^>]+content=["\']([^"\']+)["\']',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:description|og:description|twitter:description)["\']'
+            ):
+                match = re.search(pattern, html_text, re.I)
+                if match:
+                    enriched["meta_description"] = html.unescape(match.group(1)).strip()[:700]
+                    break
             if trafilatura is not None:
                 try:
-                    extracted = trafilatura.extract(
-                        html_text, url=final_url, include_comments=False,
-                        include_tables=True, favor_recall=True, deduplicate=True
-                    ) or ""
                     metadata = trafilatura.extract_metadata(html_text, default_url=final_url)
+                    if metadata:
+                        enriched["published_date"] = str(getattr(metadata, "date", None) or "").strip()
+                        enriched["author"] = str(getattr(metadata, "author", None) or "").strip()
+                        description = str(getattr(metadata, "description", None) or "").strip()
+                        if description and not enriched["meta_description"]:
+                            enriched["meta_description"] = description[:700]
+                        canonical = str(getattr(metadata, "url", None) or "").strip()
+                        canonical_url = _clean_article_url(canonical, final_url) if canonical else ""
+                        if canonical_url and not _is_low_quality_page({**row, "url": canonical_url}):
+                            enriched["canonical_url"] = canonical_url
                 except Exception as exc:
-                    LOGGER.debug("Extraction failed for %s: %s", final_url, exc)
-            if metadata:
-                enriched["published_date"] = str(getattr(metadata, "date", None) or "").strip()
-                enriched["author"] = str(getattr(metadata, "author", None) or "").strip()
-                canonical = str(getattr(metadata, "url", None) or "").strip()
-                canonical_url = _clean_article_url(canonical, final_url) if canonical else ""
-                if canonical_url and not _is_low_quality_page({**row, "url": canonical_url}):
-                    enriched["canonical_url"] = canonical_url
-            if extracted and len(extracted.strip()) >= 350:
-                enriched["content_text"] = extracted.strip()[:7000]
-                enriched["content_status"] = "extracted"
-            else:
-                enriched["content_status"] = "body_unavailable"
+                    LOGGER.debug("Metadata extraction failed for %s: %s", final_url, exc)
+            enriched["content_status"] = "metadata_only"
         except httpx.HTTPStatusError as exc:
             enriched["http_status"] = str(exc.response.status_code)
             enriched["link_status"] = "http_error"
-            enriched["content_status"] = "http_error"
+            enriched["content_status"] = "metadata_unavailable"
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             enriched["link_status"] = "not_verified"
-            enriched["content_status"] = "fetch_error"
-            LOGGER.info("Fetch failed for %s: %s", row.get("url"), exc)
+            enriched["content_status"] = "metadata_unavailable"
+            LOGGER.info("Metadata fetch failed for %s: %s", row.get("url"), exc)
         except Exception as exc:
-            enriched["content_status"] = "extract_error"
-            LOGGER.info("Extraction failed for %s: %s", row.get("url"), exc)
+            enriched["content_status"] = "metadata_unavailable"
+            LOGGER.info("Metadata extraction failed for %s: %s", row.get("url"), exc)
     return enriched
 
 
@@ -274,57 +278,26 @@ def _status_hint(text: str) -> str:
 
 
 def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now: datetime) -> str:
-    """Chinese-first factual fallback using extracted article bodies where available."""
+    """Compact bilingual fallback. No article bodies are collected or rendered."""
     date_label = now.strftime("%Y-%m-%d %H:%M %Z")
     by_section = {section["id"]: [] for section in config["sections"]}
     for record in records:
         by_section.setdefault(record.get("section_id", "other"), []).append(record)
-    extracted_count = sum(1 for row in records if row.get("content_status") == "extracted")
-    lines = [
-        "# Horizon Global Capital Intelligence / 全球经济与资本流向情报",
-        f"> 生成时间：{date_label}",
-        "> 模式：免费规则引擎（未使用 AI）",
-        f"> 搜索线索：{len(records)} 条；成功提取正文：{extracted_count} 条。",
-        "", "## 核心摘要",
-        "- 本报告优先呈现可获取的新闻正文。未能提取正文的条目会明确标记，不以标题或搜索摘要冒充完整报道。",
-        "- 投资金额、投资主体、目的地、行业和政策关联仅在来源有证据时列出；未披露或无法核实的信息不会推测。",
-        "",
-    ]
+    lines = ["# Horizon Global Investment Intelligence", f"> {date_label}", ""]
     for section in config["sections"]:
-        lines.extend([f"## {section['title'].split('/', 1)[0].strip()}",
-                      section.get("focus_zh", ""), ""])
-        rows = by_section.get(section["id"], [])
-        if not rows:
-            lines.extend(["- 本次未获得符合筛选条件的公开新闻线索；这不代表相关活动没有发生。", ""])
-        for index, row in enumerate(rows, 1):
-            status = _status_hint(f"{row.get('title', '')} {row.get('snippet', '')}")
-            title, url = row.get("title") or "未命名新闻", row.get("url", "")
+        lines.extend([f"## {section['title']}", ""])
+        for index, row in enumerate(by_section.get(section["id"], []), 1):
+            title = row.get("title") or "Untitled"
+            url = row.get("canonical_url") or row.get("resolved_url") or row.get("url", "")
+            brief = row.get("meta_description") or row.get("snippet") or "A concise verified summary is unavailable; please check the original source."
             lines.extend([
-                f"### {index}. [{title}]({url})",
-                f"- 来源：{urlparse(url).netloc or '来源待核实'}",
-                f"- 发布日期：{row.get('published_date') or '无法从页面元数据获取'}",
-                f"- 作者：{row.get('author') or '未披露/无法获取'}",
-                f"- 链接检查：{row.get('link_status', 'not_verified')}（可访问性检查不等于新闻事实核验）",
-                f"- 事件状态提示：{status}（仅为标题/摘要线索，需核对正文）",
+                f"**{index}. [{title}]({url})**",
+                f"EN: {brief[:500]}",
+                "中文：中文简报暂不可用，需由 AI 摘要服务生成；请以原文为准。",
+                f"Copy link: {url}",
+                ""
             ])
-            body = row.get("content_text", "").strip()
-            if row.get("content_status") == "extracted" and body:
-                lines.extend(["", "**新闻正文提取内容：**", body])
-            else:
-                lines.append(f"- 正文获取状态：{row.get('content_status', 'unknown')}；全文无法可靠获取，以下搜索摘要仅供线索参考。")
-                if row.get("snippet"):
-                    lines.append(f"- 搜索摘要：{row['snippet']}")
-            lines.extend([
-                "- 投资方/被投方/目的地/行业/金额/政策工具：仅凭现有证据无法完整核实；未披露项目不作推测。",
-                f"- 原文直达：[阅读原文]({url})", "",
-            ])
-    lines.extend([
-        "## 内容完整度说明",
-        f"- 正文成功提取率：{(extracted_count / len(records) * 100):.1f}%（{extracted_count}/{len(records)}）" if records else "- 本次没有新闻记录。",
-        "- 对访问受限、付费墙、非 HTML 页面或正文提取失败的来源，需人工打开原文核对。",
-        "- 本报告不构成投资建议。",
-    ])
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
 
 def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) -> list[dict[str, str]]:
     """Keep AI input focused and balanced across the six intelligence sections."""
@@ -344,27 +317,37 @@ def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) ->
 
 
 def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
-    return f"""你是全球宏观经济、跨境投资与机构资本情报编辑。
-报告日期：{date}
-当前阶段暂停逐段英中翻译、词汇表和美式音标。请用中文撰写事实整理与分析，原始英文标题可保留。
+    return f"""You are the editor of Horizon Global Investment Intelligence.
+Date: {date}
 
-要求：
-- 仅使用证据记录，不得编造事实。
-- 优先使用 content_text 正文；若为空，明确写“全文无法获取”，只能将 snippet 作为搜索线索，不得扩写为新闻事实。
-- 每条新闻标题必须使用 Markdown 链接：[新闻标题](原文URL)，并另列“阅读原文”链接。
-- 不得使用媒体首页、分类页、搜索结果页或目录页作为新闻链接。
-- 分开记录发布日期和事件发生日期；无证据写“无法获取”。
-- 交代事件经过、主体、背景；投资者、被投方、目的地国家、行业、金额及币种只在有证据时填写。未公开写“未披露”，无法获取写“无法获取”。
-- 政策新闻说明政府、政策工具、通过/公布/生效日期；仅在证据支持时关联具体投资。
-- 状态区分：已完成、正式宣布/计划、报道/谈判中、草案/提议、未核实。
-- 将来源事实与分析分开；分析不得伪装成事实。
-- 明确标记正文获取状态、链接检查状态、来源域名、原文直达链接。
-- 排除首页、栏目页、搜索页、目录页、行情页及无实质经济/投资/贸易/资本配置关联的内容，宁缺毋滥。
-- 最后列出资料缺口和方法限制，不提供个性化投资建议。
-六大板块：{json.dumps([s.get("title", "") for s in config["sections"]], ensure_ascii=False)}
-编辑规则：{json.dumps(config.get("editorial_rules", []), ensure_ascii=False)}
-证据记录：{json.dumps(records, ensure_ascii=False)}"""
+Create a very concise bilingual investment-intelligence email. Collect and present topics and short briefs only. Do NOT reproduce, request, or generate full article text.
 
+OUTPUT FORMAT:
+# Horizon Global Investment Intelligence
+## Section 1: Foreign Investment in China / 外资对中国投资
+1. [Complete English headline](DIRECT_ARTICLE_URL)
+EN: One concise sentence (ideally 25-45 words) describing the material event, investor, China sector/region, and policy response if supported.
+中文：紧接上一行的准确中文翻译。
+Copy link: https://specific-original-article-url
+
+## Section 2: Global Major Funds and Conglomerates / 全球重点财团投资
+Use the same numbered, one-item-per-block format. Number sequentially within each section.
+
+EDITORIAL RULES:
+- Only use the supplied source records. Never invent facts, amounts, dates, entities or causality.
+- Use title, search snippet and short meta_description only. These are discovery evidence, not proof; qualify claims and mark unverified where needed.
+- Prefer official company announcements, government/regulator sources and reliable media.
+- Include investor, destination country, sector, action and amount/currency only when supported. Use “Not disclosed” / “未披露” or “Unavailable” / “无法获取” where appropriate.
+- Distinguish completed, formally announced/planned, reported/under negotiation and unverified.
+- Keep publication date and event date distinct when available.
+- Exclude homepages, category/index/search pages, sitemaps, rankings, directories, generic explainers, routine stock/bond prices and unrelated stories.
+- Every headline must link directly to a specific article or official release URL. Repeat the full URL on a separate Copy link line.
+- Each English brief must be followed immediately by its Chinese translation. No separate translation section.
+- No full article text, no glossary, no IPA, no methodology paragraphs, no lengthy caveats or decorative prompts.
+- If there are no credible items in a section, write one short line saying no qualifying item was verified today.
+
+CONFIGURED SECTIONS: {json.dumps([s.get("title", "") for s in config["sections"]], ensure_ascii=False)}
+SOURCE RECORDS (metadata and snippets only): {json.dumps(records, ensure_ascii=False)}"""
 
 def validate_gemini_report(report: str, records: list[dict[str, str]]) -> None:
     if not report or len(report.strip()) < 300:
@@ -529,7 +512,7 @@ def _render_email_html(markdown_text: str) -> str:
         )
     style = """<style>
     body{font-family:Arial,'Microsoft YaHei',sans-serif;color:#202124;line-height:1.65}
-    .report{max-width:900px;margin:0 auto;padding:20px}
+    .report{max-width:760px;margin:0 auto;padding:12px}
     h1{font-size:24px;color:#17365d;border-bottom:2px solid #d9e2f3;padding-bottom:10px}
     h2{font-size:19px;color:#1f4e79;margin-top:28px}h3{font-size:16px;color:#333;margin-top:22px}
     a{color:#0563c1;text-decoration:underline;word-break:break-word}
@@ -575,13 +558,6 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
     if not report:
         report = build_rule_report(config, records, now)
-    translation_items = []
-    if config.get("translation", {}).get("enabled", True):
-        try:
-            translation_items = await translate_records(config, records)
-        except Exception as exc:
-            LOGGER.warning("Translation stage failed; keeping original-language report: %s", exc)
-        report = append_bilingual_section(report, translation_items)
     extracted_count = sum(1 for row in records if row.get("content_status") == "extracted")
     report = (
         f"> 生成模式：{mode}\n"
@@ -595,8 +571,8 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
     if config.get("output", {}).get("save_raw_results", True):
         (out_dir / "search-results.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     if send:
-        send_email(config, f"全球经济与资本流向情报 | Global Capital Intelligence | {day}", report)
-    LOGGER.info("Report saved: %s (mode=%s, records=%s, translated=%s)", report_path, mode, len(records), sum(1 for item in translation_items if item.get("translation_status") == "translated"))
+        send_email(config, f"Horizon Global Investment Intelligence | {day}", report)
+    LOGGER.info("Report saved: %s (mode=%s, records=%s)", report_path, mode, len(records))
     return report_path
 
 
