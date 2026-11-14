@@ -6,6 +6,7 @@ import html
 import json
 import logging
 import os
+import random
 import re
 import smtplib
 import ssl
@@ -132,29 +133,81 @@ def _is_low_quality_page(row: dict[str, str]) -> bool:
 
 
 def _is_relevant_to_section(row: dict[str, str], section_id: str) -> bool:
-    """Require investment/capital-flow evidence relevant to the configured section."""
+    """Use broader evidence signals; section queries provide context, but never accept keyword-only noise."""
     text = f"{row.get('title', '')} {row.get('snippet', '')}".lower()
     investment_terms = (
         "invest", "investment", "investor", "capital", "funding", "acquisition",
         "acquire", "merger", "m&a", "deal", "project", "factory", "plant",
-        "divest", "divestment", "withdraw", "stake", "portfolio", "od i", "fdi",
-        "foreign direct investment", "outbound", "overseas", "greenfield"
+        "divest", "divestment", "withdraw", "stake", "portfolio", "fdi", "odi",
+        "foreign direct investment", "outbound", "overseas", "greenfield",
+        "joint venture", "private equity", "infrastructure", "expansion",
+        "construction", "commitment", "financing", "fund", "assets", "buyout",
+        "takeover", "reallocate", "deployment", "exit"
     )
-    if not any(term in text for term in investment_terms):
-        return False
+    policy_terms = (
+        "policy", "regulation", "regulatory", "negative list", "market access",
+        "opening-up", "opening up", "foreign investment law",
+        "foreign-invested enterprise", "foreign-funded enterprise",
+        "investment environment", "investment restrictions", "investment approval",
+        "investment screening", "investment review"
+    )
     china_terms = ("china", "chinese", "beijing", "shanghai", "shenzhen", "prc", "mainland")
-    if section_id == "foreign_investment_china":
-        inbound_terms = ("foreign", "multinational", "overseas company", "international", "inbound", "fdi", "invests in china", "investment in china")
-        return any(x in text for x in china_terms) and any(x in text for x in inbound_terms)
-    if section_id == "china_outbound_investment":
-        outbound_terms = ("overseas", "outbound", "abroad", "foreign country", "international", "belt and road", "odi", "cross-border", "global")
-        china_actor_terms = ("china", "chinese", "state-owned", "so e", "chinese firm", "chinese company")
-        return any(x in text for x in china_actor_terms) and any(x in text for x in outbound_terms)
-    if section_id == "global_fund_flows":
-        fund_terms = ("blackstone", "blackrock", "kkr", "carlyle", "berkshire", "temasek", "gic", "adia", "pif", "sovereign wealth", "private equity")
-        return any(x in text for x in fund_terms)
-    return False
+    has_investment_evidence = any(term in text for term in investment_terms)
+    has_policy_evidence = any(term in text for term in policy_terms)
 
+    if section_id == "foreign_investment_china":
+        china_destination = any(term in text for term in china_terms)
+        foreign_actor = any(term in text for term in (
+            "foreign", "multinational", "overseas company", "international",
+            "inbound", "fdi", "foreign-funded", "foreign-invested"
+        ))
+        # Official policy stories can qualify without naming a company, but must concern
+        # foreign-investment access/rules in China rather than generic domestic policy.
+        foreign_policy = has_policy_evidence and any(term in text for term in (
+            "foreign investment", "foreign-invested", "foreign-funded", "foreign capital",
+            "foreign company", "market access"
+        ))
+        return china_destination and (foreign_actor or foreign_policy) and (
+            has_investment_evidence or foreign_policy
+        )
+
+    if section_id == "china_outbound_investment":
+        china_actor = any(term in text for term in (
+            "china", "chinese", "state-owned", "soe", "chinese firm",
+            "chinese company", "chinese group", "chinese investor"
+        ))
+        outside_china = any(term in text for term in (
+            "overseas", "outbound", "abroad", "foreign country", "international",
+            "belt and road", "odi", "cross-border", "global", "outside china",
+            "in africa", "in europe", "in the us", "in america", "in australia",
+            "in indonesia", "in vietnam", "in brazil", "in pakistan", "in thailand"
+        ))
+        outbound_policy = has_policy_evidence and any(term in text for term in (
+            "outbound investment", "overseas investment", "outward investment",
+            "overseas project", "odi", "cross-border investment"
+        ))
+        return china_actor and (outside_china or outbound_policy) and (
+            has_investment_evidence or outbound_policy
+        )
+
+    if section_id == "global_fund_flows":
+        fund_terms = (
+            "blackstone", "blackrock", "kkr", "carlyle", "berkshire",
+            "temasek", "gic", "adia", "pif", "qatar investment authority",
+            "mubadala", "norway sovereign wealth", "singapore sovereign wealth",
+            "sovereign wealth fund", "private equity", "apollo global",
+            "warburg pincus", "tpg", "brookfield", "ardian", "eqt partners",
+            "general atlantic", "silver lake", "bain capital", "cvc capital",
+            "oaktree capital", "abu dhabi investment"
+        )
+        named_fund = any(term in text for term in fund_terms)
+        capital_action = has_investment_evidence or any(term in text for term in (
+            "acquired", "acquires", "buyout", "sold its stake", "raises fund",
+            "fundraising", "deploying capital", "portfolio company"
+        ))
+        return named_fund and capital_action
+
+    return has_investment_evidence and any(term in text for term in china_terms)
 
 async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
     search = config["search"]
@@ -324,7 +377,7 @@ def build_rule_report(config: dict[str, Any], records: list[dict[str, str]], now
     return "\n".join(lines).rstrip() + "\n"
 
 def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Keep AI input focused and balanced across the six intelligence sections."""
+    """Keep AI input focused and balanced across the configured intelligence sections."""
     per_section = max(1, int(config.get("ai", {}).get("max_records_per_section", 4)))
     selected: list[dict[str, str]] = []
     counts: dict[str, int] = {}
@@ -369,7 +422,7 @@ LANGUAGE AND FORMAT:
 - If the supplied title/snippet is insufficient to produce a reliable Chinese translation, omit that item.
 - Every headline must link to the direct individual article or official announcement. Repeat the exact URL on a separate "Copy link:" line.
 - Number items sequentially within each section.
-- If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified today." followed by "中文：今日未核实到符合条件的资本流向信息。"
+- If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified in the current search window." followed by "中文：今日未核实到符合条件的资本流向信息。"
 
 EVIDENCE RULES:
 - Only use supplied title, short search snippet and metadata. Do not invent facts, amounts, dates, entities or causal links.
@@ -412,7 +465,7 @@ async def _gemini_request(
     retry_delays: list[Any],
 ) -> dict[str, Any]:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    retry_statuses = {429, 500, 502, 503, 504}
+    retry_statuses = {408, 429, 500, 502, 503, 504}
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
@@ -436,7 +489,8 @@ async def _gemini_request(
             if status not in retry_statuses or attempt >= max_attempts:
                 LOGGER.warning("Gemini model %s failed with HTTP %s: %s", model, status, detail)
                 raise
-            delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            base_delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            delay = base_delay * random.uniform(0.8, 1.2)
             LOGGER.warning(
                 "Gemini model %s temporary HTTP %s (attempt %s/%s); retrying in %.1f seconds",
                 model, status, attempt, max_attempts, delay
@@ -446,7 +500,8 @@ async def _gemini_request(
             last_error = exc
             if attempt >= max_attempts:
                 raise
-            delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            base_delay = float(retry_delays[min(attempt - 1, len(retry_delays) - 1)]) if retry_delays else 10.0
+            delay = base_delay * random.uniform(0.8, 1.2)
             LOGGER.warning(
                 "Gemini model %s connection issue (attempt %s/%s): %s; retrying in %.1f seconds",
                 model, attempt, max_attempts, exc, delay
@@ -464,7 +519,7 @@ async def gemini_enrich(config: dict[str, Any], records: list[dict[str, str]], d
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     primary_model = ai.get("model", "gemini-3.8-flash")
-    fallback_models = ai.get("fallback_models", ["gemini-3.7-flash"])
+    fallback_models = ai.get("fallback_models", [])
     models = [primary_model] + [m for m in fallback_models if m and m != primary_model]
 
     payload = {
@@ -490,7 +545,7 @@ async def gemini_enrich(config: dict[str, Any], records: list[dict[str, str]], d
     fallback_delays = ai.get("fallback_retry_delays_seconds", [5])
 
     errors: list[str] = []
-    async with httpx.AsyncClient(timeout=float(ai.get("timeout_seconds", 90))) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=20.0, read=float(ai.get("timeout_seconds", 180)), write=30.0, pool=20.0)) as client:
         for index, model in enumerate(models):
             attempts = primary_attempts if index == 0 else fallback_attempts
             delays = primary_delays if index == 0 else fallback_delays
