@@ -17,8 +17,6 @@ from typing import Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from global_capital.translation import append_bilingual_section, translate_records
-
 import httpx
 
 try:
@@ -558,10 +556,10 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
     if not report:
         report = build_rule_report(config, records, now)
-    extracted_count = sum(1 for row in records if row.get("content_status") == "extracted")
+    metadata_count = sum(1 for row in records if row.get("content_status") == "metadata_only")
     report = (
         f"> 生成模式：{mode}\n"
-        f"> 新闻线索：{len(records)}；正文提取成功：{extracted_count}\n\n"
+        f"> 新闻线索：{len(records)}；页面元数据获取成功：{metadata_count}\n\n"
         + report
     )
     out_dir = ROOT / config.get("output", {}).get("directory", "data/reports") / day
