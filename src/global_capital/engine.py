@@ -445,8 +445,8 @@ def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: 
         f"## Section {index}: {section['title']}\n" +
         "1. [English headline](DIRECT_ARTICLE_URL)\n" +
         "中文标题：准确的中文标题\n" +
-        "EN: A concise factual brief, normally 2-3 lines.\n" +
-        "中文：对应的准确中文正文，通常2-3行。\n" +
+        "EN: A complete concise factual brief with key facts first.\n" +
+        "中文：完整准确的中文正文，保留英文摘要事实。\n" +
         "Source: [View original](DIRECT_ORIGINAL_URL)"
         for index, section in enumerate(config["sections"], 1)
     )
