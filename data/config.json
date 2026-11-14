@@ -1,19 +1,19 @@
 {
-  "project_name": "Horizon Global Capital Intelligence",
+  "project_name": "Horizon Global Investment Intelligence",
   "timezone": "Asia/Shanghai",
-  "recipient": "RF315@foxmail.com",
+  "recipient": "rf315@foxmail.com",
   "smtp": {
     "host": "smtp-relay.brevo.com",
     "port": 465,
     "username": "c25cc1001@smtp-brevo.com",
-    "sender": "sales@mail.mykeychain.top",
-    "sender_name": "Horizon Global Capital Intelligence",
+    "sender": "dxp0755@gmail.com",
+    "sender_name": "Horizon Global Investment Intelligence",
     "password_env": "BREVO_SMTP_KEY"
   },
   "search": {
-    "max_results_per_query": 5,
-    "max_queries": 24,
-    "delay_seconds": 1.2,
+    "max_results_per_query": 8,
+    "max_queries": 16,
+    "delay_seconds": 1,
     "region": "wt-wt",
     "timelimit": "d"
   },
@@ -23,14 +23,14 @@
     "api_key_env": "GEMINI_API_KEY",
     "model": "gemini-3.8-flash",
     "timeout_seconds": 90,
-    "max_output_tokens": 7000,
+    "max_output_tokens": 5000,
     "max_attempts": 4,
     "retry_delays_seconds": [
       5,
       10,
       20
     ],
-    "max_records_per_section": 4
+    "max_records_per_section": 12
   },
   "output": {
     "directory": "data/reports",
@@ -38,171 +38,87 @@
   },
   "sections": [
     {
-      "id": "china_cooperation",
-      "title": "China's International Economic Cooperation / 中国对外经济合作",
-      "focus": "Cross-border trade, investment, industrial cooperation, strategic agreements, infrastructure and supply-chain cooperation involving China.",
+      "id": "foreign_investment_china",
+      "title": "Foreign Investment in China / 外资对中国投资",
+      "focus": "Foreign direct investment and strategic capital entering China: target sectors, regions, projects, investor direction, and China's policy response or countermeasures. Only material investment or policy developments.",
+      "focus_zh": "关注外资流入中国的实际投资、投资方向，以及中国针对外资的政策措施。",
       "queries": [
-        "China overseas investment trade cooperation agreements industrial cooperation latest",
-        "China foreign direct investment bilateral economic cooperation new agreements",
-        "China cross border investment manufacturing supply chain cooperation latest"
+        "foreign investors investment in China new projects sectors 2026",
+        "Blackstone KKR BlackRock Temasek investment China 2026",
+        "China foreign direct investment policy response opening measures 2026",
+        "China government response foreign investment industrial policy 2026",
+        "multinational companies expand investment China manufacturing technology 2026",
+        "foreign capital China investment direction healthcare technology energy consumer 2026",
+        "China inbound investment announcement foreign company project 2026",
+        "China foreign investment negative list opening policy announcement 2026"
       ],
       "keywords": [
-        "China",
-        "investment",
-        "trade agreement",
-        "industrial cooperation",
-        "FDI",
-        "supply chain"
-      ],
-      "focus_zh": "重点关注涉及中国的跨境贸易、投资、产业合作、战略协议、基础设施及供应链合作。"
+        "foreign investment China",
+        "FDI China",
+        "inbound investment",
+        "Blackstone",
+        "KKR",
+        "BlackRock",
+        "Temasek",
+        "investment policy",
+        "foreign capital"
+      ]
     },
     {
-      "id": "us_policy",
-      "title": "US External Economic Policy / 美国对外经济政策",
-      "focus": "US tariffs, sanctions, export controls, outbound and inbound investment restrictions, trade policy and US-China economic relations.",
+      "id": "global_conglomerate_investment",
+      "title": "Global Major Funds and Conglomerates / 全球重点财团投资",
+      "focus": "Where major global funds, private equity firms, asset managers, sovereign wealth funds and conglomerates invest: destination countries, sectors, acquisitions, new projects, increases, exits and announced plans. Prioritize Blackstone, BlackRock, KKR, Carlyle, Berkshire Hathaway, Temasek, GIC, ADIA and PIF.",
+      "focus_zh": "关注大型私募股权基金、资产管理公司、主权财富基金和综合性财团的全球资本配置。",
       "queries": [
-        "United States international economic policy tariffs sanctions investment restrictions latest",
-        "US China trade policy export controls investment restrictions latest",
-        "US outbound investment rules foreign investment screening policy latest"
+        "Blackstone investment new country sector acquisition 2026",
+        "BlackRock strategic investment country infrastructure private markets 2026",
+        "KKR investment acquisition country sector 2026",
+        "Carlyle Group investment acquisition country 2026",
+        "Temasek GIC investment country sector 2026",
+        "ADIA PIF sovereign wealth fund investment country sector 2026",
+        "Berkshire Hathaway major investment acquisition country 2026",
+        "major private equity sovereign wealth fund investment announced today"
       ],
       "keywords": [
-        "United States",
-        "tariff",
-        "sanctions",
-        "export controls",
-        "investment screening",
-        "US-China"
-      ],
-      "focus_zh": "重点关注美国关税、制裁、出口管制、对外及对内投资限制、贸易政策和中美经济关系。"
-    },
-    {
-      "id": "institutional_capital",
-      "title": "Wall Street and Global Institutional Capital / 华尔街与全球机构资本",
-      "focus": "Material capital allocation decisions by major banks, investment banks, asset managers, sovereign wealth funds, public investment funds, conglomerates, family offices and large business families. Exclude routine stock-price commentary.",
-      "queries": [
-        "sovereign wealth fund major investment acquisition divestment announced today",
-        "BlackRock Vanguard State Street major capital allocation infrastructure private markets investment",
-        "Wall Street bank asset manager strategic investment acquisition divestment latest",
-        "family office conglomerate large institutional investment private equity capital allocation"
-      ],
-      "keywords": [
+        "Blackstone",
+        "BlackRock",
+        "KKR",
+        "Carlyle",
+        "Berkshire Hathaway",
+        "Temasek",
+        "GIC",
+        "ADIA",
+        "PIF",
         "sovereign wealth fund",
-        "asset manager",
-        "capital allocation",
         "investment",
-        "acquisition",
-        "divestment",
-        "family office",
-        "conglomerate"
-      ],
-      "focus_zh": "重点关注大型银行、投资银行、资产管理公司、主权财富基金、公共投资基金、综合性企业集团、家族办公室及大型商业家族的重大资本配置决策；排除常规股价评论。"
-    },
-    {
-      "id": "major_investments",
-      "title": "Major Global Investments and M&A / 全球重大投资与并购",
-      "focus": "Large cross-border M&A, private equity, venture capital, greenfield industrial investment, factories, data centers, energy, logistics, manufacturing and strategic infrastructure.",
-      "queries": [
-        "major cross border investment acquisition private equity industrial project announced",
-        "large manufacturing factory investment foreign direct investment project announced",
-        "global private equity infrastructure energy logistics investment deal latest",
-        "cross border M&A strategic investment sovereign fund industrial investment"
-      ],
-      "keywords": [
-        "cross-border",
-        "M&A",
-        "private equity",
-        "greenfield",
-        "factory",
-        "infrastructure",
-        "investment"
-      ],
-      "focus_zh": "重点关注大型跨境并购、私募股权、风险投资、绿地工业投资，以及工厂、数据中心、能源、物流、制造业和战略基础设施项目。"
-    },
-    {
-      "id": "fed_policy",
-      "title": "Federal Reserve and Monetary Policy / 美联储与货币政策",
-      "focus": "Federal Reserve decisions, rates, balance sheet and monetary policy only where there is a meaningful transmission to sovereign funds, institutional asset allocation, conglomerates, family offices, cross-border investment or government financing.",
-      "queries": [
-        "Federal Reserve monetary policy interest rates institutional capital allocation impact latest",
-        "Federal Reserve policy global capital flows emerging markets sovereign wealth funds",
-        "central bank rate decision cross border investment capital flows institutional investors"
-      ],
-      "keywords": [
-        "Federal Reserve",
-        "interest rate",
-        "monetary policy",
-        "capital flows",
-        "institutional allocation"
-      ],
-      "focus_zh": "仅关注美联储决策、利率、资产负债表和货币政策对主权财富基金、机构资产配置、企业集团、家族办公室、跨境投资或政府融资产生的实质性影响。"
-    },
-    {
-      "id": "destination_policy",
-      "title": "Investment Destination Policy Responses / 投资目的地国家政策响应",
-      "focus": "How recipient countries respond to inbound capital and strategic investment: tax incentives, subsidies, grants, industrial policy, local-content rules, foreign investment screening, ownership restrictions, permits, export incentives and regulatory changes. Link the policy to the relevant investment where evidence exists.",
-      "queries": [
-        "government investment incentives tax credits subsidies foreign direct investment manufacturing policy latest",
-        "foreign investment screening national security review industrial policy incentives recipient countries",
-        "country announces tax incentives subsidy package foreign manufacturing investment project",
-        "local content rules foreign investment industrial policy investment incentives latest"
-      ],
-      "keywords": [
-        "tax incentive",
-        "subsidy",
-        "grant",
-        "foreign investment screening",
-        "industrial policy",
-        "local content",
-        "investment incentive"
-      ],
-      "focus_zh": "关注资本和战略投资接收国的政策响应，包括税收优惠、补贴、拨款、产业政策、本地含量要求、外资审查、持股限制、许可、出口激励及监管变化；只有证据支持时才将政策与具体投资关联。"
+        "acquisition"
+      ]
     }
   ],
   "editorial_rules": [
-    "Do not prioritize ordinary stock price movements, individual share prices or routine bond price movements.",
-    "Prioritize real capital allocation, major policy decisions and material institutional actions.",
-    "Label each item as completed, formally announced/planned, reported/under negotiation, or unverified.",
-    "For every material investment, identify destination country, sector, investor, value, status and source only when disclosed.",
-    "For recipient-country policy, identify the government, policy instrument, effective date and linked investment only when supported by evidence.",
-    "Never invent amounts, dates, investor identities, policy details or causal relationships.",
-    "Separate facts from analysis. Mark causal interpretation as analysis, not established fact.",
-    "Do not provide personalized investment advice.",
-    "Prefer extracted article body text over search snippets; clearly mark when full text cannot be retrieved.",
-    "Every news item must retain a direct URL to the specific original article, not a homepage, category page or search result page.",
-    "The email HTML must render each Markdown article-title link as a clickable anchor and include a readable plain-text alternative.",
-    "Distinguish publication date from event date and never infer missing dates or investment facts.",
-    "Pause paragraph-by-paragraph English-to-Chinese translation, vocabulary lists and American IPA until explicitly resumed.",
-    "Prefer extracted article body text over search snippets; clearly mark when full text cannot be retrieved.",
-    "Every news item must retain a direct URL to the specific original article, not a homepage, category page or search result page.",
-    "The email HTML must render each Markdown article-title link as a clickable anchor and include a readable plain-text alternative.",
-    "Distinguish publication date from event date and never infer missing dates or investment facts."
+    "Collect only concise news metadata and short summaries; do not download, store, or reproduce full article bodies.",
+    "Every item must be a specific article or official announcement, never a homepage, category page, search page, index, sitemap, market quote page or directory.",
+    "Every item must show a sequence number, a complete English headline, one concise English brief, and its Chinese translation immediately on the next line.",
+    "Use the article headline as a clickable direct link to the specific original article. Also show the full plain-text URL on a separate Copy link line so readers can select and copy it.",
+    "Email clients do not reliably support clipboard JavaScript; provide the raw URL as selectable text rather than a nonfunctional copy button.",
+    "Prioritize official company announcements, government and regulator releases, and reliable media.",
+    "Distinguish completed, formally announced/planned, reported/under negotiation, and unverified.",
+    "Include investor, destination country/region, sector, deal or policy action, amount and currency only when supported; otherwise mark not disclosed or unavailable.",
+    "Separate event date from publication date; do not infer missing dates.",
+    "Do not turn a search snippet into an established fact. Use a cautious brief and clearly flag unverified information.",
+    "Exclude routine stock and bond price movements, generic market commentary, fund rankings, company directories, old evergreen explainers and unrelated stories.",
+    "No full-text extraction, no paragraph-by-paragraph translation, no vocabulary list and no American IPA.",
+    "Keep the email visually clean: only two sections, numbered entries, one English line followed by one Chinese line, and a source/copy URL line."
   ],
   "article_extraction": {
-    "max_articles": 48,
+    "max_articles": 40,
     "concurrency": 5,
-    "timeout_seconds": 18
+    "timeout_seconds": 18,
+    "metadata_only": true
   },
   "translation": {
-    "enabled": true,
-    "provider_order": [
-      "gemini",
-      "google",
-      "microsoft",
-      "mymemory",
-      "libretranslate"
-    ],
-    "gemini_key_env": "GEMINI_API_KEY",
-    "gemini_model": "gemini-2.5-flash",
-    "google_key_env": "GOOGLE_TRANSLATE_API_KEY",
-    "microsoft_key_env": "MICROSOFT_TRANSLATOR_KEY",
-    "microsoft_region_env": "MICROSOFT_TRANSLATOR_REGION",
-    "mymemory_email_env": "MYMEMORY_EMAIL",
-    "libre_url_env": "LIBRETRANSLATE_URL",
-    "libre_key_env": "LIBRETRANSLATE_API_KEY",
-    "cache_path": "data/translation-cache.sqlite3",
-    "timeout_seconds": 35,
-    "max_articles": 8,
-    "min_body_chars": 250,
-    "chunk_chars": 2800
+    "enabled": false,
+    "provider_order": [],
+    "cache_path": "data/translation-cache.sqlite3"
   }
 }
