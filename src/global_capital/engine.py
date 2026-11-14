@@ -598,7 +598,7 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             report = await gemini_enrich(config, ai_records, day)
             mode = "gemini"
         except Exception as exc:
-            LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
+            LOGGER.error("Gemini unavailable; report will not be emailed because bilingual validation is mandatory: %s", exc)
     if not report:
         raise RuntimeError(
             "No valid bilingual investment report was generated. Email not sent; "
