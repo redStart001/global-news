@@ -559,12 +559,6 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
     if not report:
         report = build_rule_report(config, records, now)
-    metadata_count = sum(1 for row in records if row.get("content_status") == "metadata_only")
-    report = (
-        f"> 生成模式：{mode}\n"
-        f"> 新闻线索：{len(records)}；页面元数据获取成功：{metadata_count}\n\n"
-        + report
-    )
     out_dir = ROOT / config.get("output", {}).get("directory", "data/reports") / day
     out_dir.mkdir(parents=True, exist_ok=True)
     report_path = out_dir / "global-capital-intelligence.md"
