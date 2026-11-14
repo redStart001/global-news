@@ -526,9 +526,10 @@ def _render_email_html(markdown_text: str) -> str:
 
 def send_email(config: dict[str, Any], subject: str, body: str) -> None:
     smtp = config["smtp"]
-    password = os.getenv(smtp.get("password_env", "BREVO_SMTP_KEY"), "").strip()
+    password_env = smtp.get("password_env", "GMAIL_APP_PASSWORD")
+    password = os.getenv(password_env, "").strip()
     if not password:
-        raise RuntimeError("BREVO_SMTP_KEY is not configured")
+        raise RuntimeError(f"{password_env} is not configured")
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
     message["From"] = f"{smtp.get('sender_name', 'Horizon Intelligence')} <{smtp['sender']}>"
