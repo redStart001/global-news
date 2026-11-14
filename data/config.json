@@ -15,22 +15,23 @@
     "max_queries": 24,
     "delay_seconds": 1,
     "region": "wt-wt",
-    "timelimit": "d"
+    "timelimit": "w"
   },
   "ai": {
     "enabled": true,
     "provider": "gemini",
     "api_key_env": "GEMINI_API_KEY",
     "model": "gemini-3.8-flash",
-    "timeout_seconds": 90,
+    "timeout_seconds": 180,
     "max_output_tokens": 5000,
     "max_attempts": 4,
     "retry_delays_seconds": [
-      5,
       10,
-      20
+      25,
+      50
     ],
-    "max_records_per_section": 8
+    "max_records_per_section": 8,
+    "fallback_models": []
   },
   "output": {
     "directory": "data/reports",
