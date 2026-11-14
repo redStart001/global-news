@@ -468,10 +468,10 @@ LANGUAGE AND FORMAT:
 - For EVERY item, use this exact structure and order:
   1. [English headline](DIRECT_ARTICLE_URL)
   中文标题：accurate Chinese translation of the headline
-  EN: concise factual brief (normally 2-3 lines; do not add unnecessary background)
-  中文：accurate Chinese translation of the brief (normally 2-3 lines)
+  EN: a complete but concise factual brief; put the key facts first and include supported details, without padding or inventing facts
+  中文：完整准确的中文翻译，保留英文摘要的事实与细节
   Source: [View original](EXACT_DIRECT_ARTICLE_URL)
-- The English title and Chinese title must each be one line. Keep English and Chinese briefs concise, normally 2-3 lines each.
+- The English title and Chinese title must each be one line. Write a complete factual brief with the key information first; the email preview will show only the first 2-3 lines and the rest will be expandable. Do not pad a brief or invent details when the source evidence is limited.
 - Never output an English-only item, placeholder translation, or "translation unavailable" message.
 - If the supplied title/snippet is insufficient to produce a reliable Chinese title or brief, omit that item.
 - Repeat the exact original URL on the separate Source line.
