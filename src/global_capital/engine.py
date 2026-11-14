@@ -131,6 +131,31 @@ def _is_low_quality_page(row: dict[str, str]) -> bool:
     return False
 
 
+def _is_relevant_to_section(row: dict[str, str], section_id: str) -> bool:
+    """Require investment/capital-flow evidence relevant to the configured section."""
+    text = f"{row.get('title', '')} {row.get('snippet', '')}".lower()
+    investment_terms = (
+        "invest", "investment", "investor", "capital", "funding", "acquisition",
+        "acquire", "merger", "m&a", "deal", "project", "factory", "plant",
+        "divest", "divestment", "withdraw", "stake", "portfolio", "od i", "fdi",
+        "foreign direct investment", "outbound", "overseas", "greenfield"
+    )
+    if not any(term in text for term in investment_terms):
+        return False
+    china_terms = ("china", "chinese", "beijing", "shanghai", "shenzhen", "prc", "mainland")
+    if section_id == "foreign_investment_china":
+        inbound_terms = ("foreign", "multinational", "overseas company", "international", "inbound", "fdi", "invests in china", "investment in china")
+        return any(x in text for x in china_terms) and any(x in text for x in inbound_terms)
+    if section_id == "china_outbound_investment":
+        outbound_terms = ("overseas", "outbound", "abroad", "foreign country", "international", "belt and road", "odi", "cross-border", "global")
+        china_actor_terms = ("china", "chinese", "state-owned", "so e", "chinese firm", "chinese company")
+        return any(x in text for x in china_actor_terms) and any(x in text for x in outbound_terms)
+    if section_id == "global_fund_flows":
+        fund_terms = ("blackstone", "blackrock", "kkr", "carlyle", "berkshire", "temasek", "gic", "adia", "pif", "sovereign wealth", "private equity")
+        return any(x in text for x in fund_terms)
+    return False
+
+
 async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
     search = config["search"]
     max_queries = int(search.get("max_queries", 18))
@@ -144,14 +169,15 @@ async def collect(config: dict[str, Any]) -> list[dict[str, str]]:
                     _search_sync, query, limit, search.get("region", "wt-wt"), search.get("timelimit", "d")
                 )
                 for row in rows:
-                    if _is_low_quality_page(row) or _is_obviously_off_topic(row):
-                        LOGGER.info("Filtered low-quality/off-topic result: %s", row.get("url", ""))
+                    row["section_id"] = section["id"]
+                    row["section_title"] = section["title"]
+                    if (_is_low_quality_page(row) or _is_obviously_off_topic(row)
+                            or not _is_relevant_to_section(row, section["id"])):
+                        LOGGER.info("Filtered irrelevant result for %s: %s", section["id"], row.get("url", ""))
                         continue
                     normalized = row["url"].split("#", 1)[0].rstrip("/")
                     if normalized not in seen:
                         seen.add(normalized)
-                        row["section_id"] = section["id"]
-                        row["section_title"] = section["title"]
                         all_rows.append(row)
             except Exception as exc:
                 LOGGER.warning("Search failed (%s): %s", query, exc)
@@ -315,47 +341,62 @@ def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) ->
 
 
 def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
+    sections = "\n".join(
+        f"## Section {index}: {section['title']}\\n" +
+        "1. [English headline](DIRECT_ARTICLE_URL)\\n" +
+        "EN: One concise factual sentence identifying investor, destination and sector/action.\\n" +
+        "中文：Accurate, complete Chinese translation of the EN sentence.\\n" +
+        "Copy link: https://direct-original-article-url"
+        for index, section in enumerate(config["sections"], 1)
+    )
     return f"""You are the editor of Horizon Global Investment Intelligence.
 Date: {date}
 
-Create a very concise bilingual investment-intelligence email. Collect and present topics and short briefs only. Do NOT reproduce, request, or generate full article text.
+Create a concise investment-flow intelligence email in English and Chinese. There are exactly three configured sections:
+{sections}
 
-OUTPUT FORMAT:
-# Horizon Global Investment Intelligence
-## Section 1: Foreign Investment in China / 外资对中国投资
-1. [Complete English headline](DIRECT_ARTICLE_URL)
-EN: One concise sentence (ideally 25-45 words) describing the material event, investor, China sector/region, and policy response if supported.
-中文：紧接上一行的准确中文翻译。
-Copy link: https://specific-original-article-url
+STRICT TOPIC FILTER:
+- Section 1: foreign capital entering China only.
+- Section 2: Chinese companies, funds or state-owned capital investing OUTSIDE China only.
+- Section 3: named global major funds/conglomerates investing, acquiring, increasing stakes, reallocating capital or exiting specific countries/sectors.
+- Reject consumer finance, personal disputes, bailiffs, mortgages, savings, jobs, celebrity, sports, weather, stock-price pages, general economy commentary and unrelated news.
+- A qualifying item must show a relevant investor/capital source AND an investment action or specific investment policy AND the destination geography. No keyword-only matches.
+- Do not place a Chinese outbound investment story in Section 1, or an inbound foreign investment story in Section 2.
 
-## Section 2: Global Major Funds and Conglomerates / 全球重点财团投资
-Use the same numbered, one-item-per-block format. Number sequentially within each section.
+LANGUAGE AND FORMAT:
+- Every English brief line beginning "EN:" MUST be followed immediately by a complete accurate Chinese translation line beginning "中文：".
+- Never output an English-only item, placeholder translation, or "translation unavailable" message.
+- If the supplied title/snippet is insufficient to produce a reliable Chinese translation, omit that item.
+- Every headline must link to the direct individual article or official announcement. Repeat the exact URL on a separate "Copy link:" line.
+- Number items sequentially within each section.
+- If no qualifying story exists in a section, write exactly: "No qualifying capital-flow update verified today." followed by "中文：今日未核实到符合条件的资本流向信息。"
 
-EDITORIAL RULES:
-- Only use the supplied source records. Never invent facts, amounts, dates, entities or causality.
-- Use title, search snippet and short meta_description only. These are discovery evidence, not proof; qualify claims and mark unverified where needed.
-- Prefer official company announcements, government/regulator sources and reliable media.
-- Include investor, destination country, sector, action and amount/currency only when supported. Use “Not disclosed” / “未披露” or “Unavailable” / “无法获取” where appropriate.
-- Distinguish completed, formally announced/planned, reported/under negotiation and unverified.
-- Keep publication date and event date distinct when available.
-- Exclude homepages, category/index/search pages, sitemaps, rankings, directories, generic explainers, routine stock/bond prices and unrelated stories.
-- Every headline must link directly to a specific article or official release URL. Repeat the full URL on a separate Copy link line.
-- Each English brief must be followed immediately by its Chinese translation. No separate translation section.
-- No full article text, no glossary, no IPA, no methodology paragraphs, no lengthy caveats or decorative prompts.
-- If there are no credible items in a section, write one short line saying no qualifying item was verified today.
+EVIDENCE RULES:
+- Only use supplied title, short search snippet and metadata. Do not invent facts, amounts, dates, entities or causal links.
+- Prefer official government, regulator, company/investor announcements and credible financial media.
+- Distinguish completed, announced/planned, reported/under negotiation and unverified.
+- Include investor, destination country/region, sector, action, amount/currency only when supported. Otherwise state "Not disclosed" / "未披露".
+- Do not reproduce article bodies, add methodology, glossary, IPA or long caveats.
+- Output only the three sections and the entries.
 
-CONFIGURED SECTIONS: {json.dumps([s.get("title", "") for s in config["sections"]], ensure_ascii=False)}
-SOURCE RECORDS (metadata and snippets only): {json.dumps(records, ensure_ascii=False)}"""
+SOURCE RECORDS (metadata and short snippets only): {json.dumps(records, ensure_ascii=False)}"""
 
 def validate_gemini_report(report: str, records: list[dict[str, str]]) -> None:
     if not report or len(report.strip()) < 120:
         raise RuntimeError("Gemini report is empty or unusually short")
     if report.rstrip().endswith(("...", "…", "**", "|")):
         raise RuntimeError("Gemini report appears to be truncated")
-    if "## Section 1" not in report or "## Section 2" not in report:
-        raise RuntimeError("Gemini report omitted one of the two required sections")
+    for index in range(1, 4):
+        if f"## Section {index}" not in report:
+            raise RuntimeError(f"Gemini report omitted required section {index}")
     if "中文：" not in report:
         raise RuntimeError("Gemini report omitted the Chinese line paired with English briefs")
+    if "中文：中文简报暂不可用" in report or "translation unavailable" in report.lower():
+        raise RuntimeError("Gemini report contains an untranslated placeholder")
+    for match in re.finditer(r"(?m)^EN:.*$", report):
+        following = report[match.end():].lstrip("\r\n")
+        if not following.startswith("中文："):
+            raise RuntimeError("An English brief is not immediately followed by Chinese translation")
     if not re.search(r"\[[^\]]+\]\(https?://[^)]+\)", report):
         # A no-news report may legitimately contain no article links.
         if not ("No qualifying item" in report or "今日未发现" in report):
@@ -559,7 +600,10 @@ async def run(config_path: Path = CONFIG_PATH, *, send: bool = True, force_rules
         except Exception as exc:
             LOGGER.warning("Gemini unavailable; falling back to free rules: %s", exc)
     if not report:
-        report = build_rule_report(config, records, now)
+        raise RuntimeError(
+            "No valid bilingual investment report was generated. Email not sent; "
+            "refusing to send irrelevant or untranslated fallback content."
+        )
     out_dir = ROOT / config.get("output", {}).get("directory", "data/reports") / day
     out_dir.mkdir(parents=True, exist_ok=True)
     report_path = out_dir / "global-capital-intelligence.md"
