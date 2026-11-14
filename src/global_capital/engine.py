@@ -342,10 +342,10 @@ def _select_ai_records(config: dict[str, Any], records: list[dict[str, str]]) ->
 
 def _gemini_prompt(config: dict[str, Any], records: list[dict[str, str]], date: str) -> str:
     sections = "\n".join(
-        f"## Section {index}: {section['title']}\\n" +
-        "1. [English headline](DIRECT_ARTICLE_URL)\\n" +
-        "EN: One concise factual sentence identifying investor, destination and sector/action.\\n" +
-        "中文：Accurate, complete Chinese translation of the EN sentence.\\n" +
+        f"## Section {index}: {section['title']}\n" +
+        "1. [English headline](DIRECT_ARTICLE_URL)\n" +
+        "EN: One concise factual sentence identifying investor, destination and sector/action.\n" +
+        "中文：Accurate, complete Chinese translation of the EN sentence.\n" +
         "Copy link: https://direct-original-article-url"
         for index, section in enumerate(config["sections"], 1)
     )
