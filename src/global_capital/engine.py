@@ -10,7 +10,7 @@ import random
 import re
 import smtplib
 import ssl
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -232,7 +232,7 @@ async def collect(config: dict[str, Any], cycle: str | None = None) -> list[dict
     search = config["search"]
     cycle = (cycle or os.getenv("SEARCH_CYCLE", "monday")).lower()
     now = datetime.now(ZoneInfo(config["timezone"]))
-    week_start = (now.date() - __import__("datetime").timedelta(days=now.weekday())).isoformat()
+    week_start = (now.date() - timedelta(days=now.weekday())).isoformat()
     history_path = _site_history_path(config)
     previous_domains = _load_site_history(history_path, week_start) if cycle == "thursday" else set()
     current_domains: set[str] = set()
