@@ -136,7 +136,7 @@
     "Prefer official government, regulator, investor/company announcements and credible financial media. Cross-check material figures when possible.",
     "Distinguish completed investment, announced/planned investment, reported negotiations and unverified claims.",
     "Include amount, currency, sector, country, project and date only when supported by source records.",
-    "Keep the email concise: three sections, numbered items, one-line English and Chinese titles, 2-3 line bilingual briefs, independently expandable language blocks, and a separate original-source line."
+    "Keep the email concise: three sections, numbered items, one-line English and Chinese titles, 2-3 visible lines per language by default, independently expandable full briefs, and a separate original-source line."
   ],
   "article_extraction": {
     "max_articles": 40,
