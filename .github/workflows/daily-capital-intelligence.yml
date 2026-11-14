@@ -2,12 +2,23 @@ name: Daily Global Capital Intelligence
 
 on:
   schedule:
-    # 07:11 Asia/Shanghai = 23:11 UTC on the previous day
-    - cron: '11 23 * * *'
+    # Monday 07:06 Asia/Shanghai = Sunday 23:06 UTC
+    - cron: '6 23 * * 0'
+    # Thursday 23:08 Asia/Shanghai = Thursday 15:08 UTC
+    - cron: '8 15 * * 4'
   workflow_dispatch:
+    inputs:
+      cycle:
+        description: "Manual search cycle"
+        required: true
+        type: choice
+        options:
+          - monday
+          - thursday
+        default: monday
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: daily-global-capital-intelligence
@@ -16,7 +27,7 @@ concurrency:
 jobs:
   generate-and-send:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,7 +44,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           PYTHONPATH: src
+          SEARCH_CYCLE: ${{ github.event_name == 'schedule' && (github.event.schedule == '6 23 * * 0' && 'monday' || 'thursday') || inputs.cycle || 'monday' }}
         run: python src/run.py
+      - name: Persist weekly searched-site history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/search_site_history.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update weekly searched-site history"
+            git push
+          fi
       - name: Upload report artifact
         if: always()
         uses: actions/upload-artifact@v4
